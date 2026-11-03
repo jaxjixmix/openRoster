@@ -48,6 +48,7 @@ build:
 test:
 	node --test tests/*.test.cjs
 	cd web && node --test tests/tz.test.mjs
+	cd web && node --experimental-strip-types tests/format.test.mjs
 
 test-api:
 	node scripts/test-api.mjs

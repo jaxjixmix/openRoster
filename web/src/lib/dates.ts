@@ -109,7 +109,7 @@ export function timeInTz(iso: string, tz: string): string {
   return formatInTimeZone(toDate(iso), tz, "HH:mm");
 }
 
-export { tzOffsetForDate, tzOffsets } from "./tz";
+export { tzOffsetForDate, tzOffsets } from "./tz.js";
 
 export function nextShift<T extends { starts_at: string; ends_at: string }>(
   shifts: T[],
