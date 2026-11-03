@@ -103,6 +103,62 @@ async function main() {
     assert.match(await page.locator("main").innerText(), /Scheduled labor budget/);
     console.log("PASS schedule and labor budget");
 
+    await page.getByTestId("schedule-view-day").click();
+    await page.waitForTimeout(500);
+    assert.match(await page.getByTestId("range-label").innerText(), /day,/);
+    await page.getByTestId("schedule-view-2weeks").click();
+    await page.waitForTimeout(500);
+    assert.match(await page.getByTestId("range-label").innerText(), /–/);
+    await page.getByTestId("schedule-view-4weeks").click();
+    await page.waitForTimeout(500);
+    assert.match(await page.getByTestId("range-label").innerText(), /–/);
+    await page.getByTestId("schedule-view-month").click();
+    await page.waitForTimeout(500);
+    assert.match(await page.getByTestId("range-label").innerText(), /\d{4}/);
+    assert.equal(await page.getByRole("button", { name: "Timeline" }).count(), 0);
+    await page.getByTestId("schedule-view-week").click();
+    await page.waitForTimeout(700);
+
+    const shiftCard = page.locator("[data-shift-id]").first();
+    await shiftCard.click({ button: "right" });
+    await page.getByRole("menu").waitFor();
+    assert.match(await page.getByRole("menu").innerText(), /Copy shift/);
+    assert.match(await page.getByRole("menu").innerText(), /Repeat next week/);
+    assert.match(await page.getByRole("menu").innerText(), /Delete shift/);
+    await page.getByRole("menuitem", { name: "Copy shift" }).click();
+    await page.waitForTimeout(300);
+    assert.match(await page.locator(".fixed.bottom-5").innerText(), /Shift copied/);
+
+    await page.getByTestId("schedule-view-month").click();
+    await page.waitForTimeout(500);
+    const emptyDay = page.getByRole("button", { name: "+ Add shift" }).first();
+    await emptyDay.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Paste shift here" }).click();
+    await page.waitForTimeout(900);
+    assert.match(await page.locator(".fixed.bottom-5").innerText(), /Created 1 shift/);
+    const pastedId = await page.evaluate(async (pbUrl) => {
+      const auth = JSON.parse(localStorage.getItem("pocketbase_auth") || "{}");
+      const res = await fetch(`${pbUrl}/api/collections/shifts/records?perPage=1&sort=-created`, {
+        headers: { Authorization: auth.token },
+      });
+      return (await res.json()).items?.[0]?.id || "";
+    }, PB_URL);
+    assert.ok(pastedId, "pasted shift exists");
+    await page.locator(`[data-shift-id="${pastedId}"]`).first().click({ button: "right" });
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("menuitem", { name: "Delete shift" }).click();
+    await page.waitForTimeout(700);
+    assert.match(await page.locator(".fixed.bottom-5").innerText(), /Shift deleted/);
+
+    await page.getByTestId("schedule-view-week").click();
+    await page.waitForTimeout(600);
+    const openShift = page.locator("[data-shift-id]").filter({ hasText: "Open" }).first();
+    await openShift.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Repeat next week" }).click();
+    await page.waitForTimeout(900);
+    assert.match(await page.locator(".fixed.bottom-5").innerText(), /Created 1 repeated shift/);
+    console.log("PASS schedule views and shift context menu");
+
     await page.getByRole("button", { name: /Add shift/ }).first().click();
     await page.getByRole("dialog").waitFor();
     const unlabeled = await page.evaluate(() =>

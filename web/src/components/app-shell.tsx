@@ -102,6 +102,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               <Link
                 href={item.href}
                 onClick={onNavigate}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "group relative mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition",
                   active
@@ -109,7 +110,6 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     : "text-[#b9b3a3] hover:bg-white/[0.05] hover:text-[#f2efe5]",
                 )}
               >
-                aria-current={active ? "page" : undefined}
                 {active && (
                   <span className="absolute -left-3 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-accent" />
                 )}

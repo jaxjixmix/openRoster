@@ -1,5 +1,6 @@
 import {
   addDays,
+  addMonths,
   differenceInMinutes,
   format,
   parseISO,
@@ -48,6 +49,44 @@ export function weekdayShort(date: string): string {
 
 export function weekdayLong(date: string): string {
   return format(parseISO(date + "T00:00:00"), "EEEE", { locale: currentLocale });
+}
+
+export type ScheduleView = "day" | "week" | "2weeks" | "4weeks" | "month";
+
+export interface ScheduleRange {
+  start: string;
+  end: string;
+  days: string[];
+}
+
+export function addMonthsStr(date: string, months: number): string {
+  return format(addMonths(parseISO(date + "T00:00:00"), months), "yyyy-MM-dd");
+}
+
+export function monthYear(date: string): string {
+  return format(parseISO(date + "T00:00:00"), "MMMM yyyy", { locale: currentLocale });
+}
+
+export function scheduleRange(anchor: string, view: ScheduleView, weekStartsOn = 1): ScheduleRange {
+  if (view === "day") {
+    return { start: anchor, end: addDaysStr(anchor, 1), days: [anchor] };
+  }
+  if (view === "month") {
+    const first = `${anchor.slice(0, 7)}-01`;
+    const [year, month] = first.split("-").map(Number);
+    const nextMonth = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+    const start = weekStart(first, weekStartsOn);
+    const end = addDaysStr(weekStart(addDaysStr(nextMonth, -1), weekStartsOn), 7);
+    const days: string[] = [];
+    for (let day = start; day < end; day = addDaysStr(day, 1)) days.push(day);
+    return { start, end, days };
+  }
+  const length = view === "week" ? 7 : view === "2weeks" ? 14 : 28;
+  const start = weekStart(anchor, weekStartsOn);
+  const end = addDaysStr(start, length);
+  const days: string[] = [];
+  for (let day = start; day < end; day = addDaysStr(day, 1)) days.push(day);
+  return { start, end, days };
 }
 
 export function monthDay(date: string): string {
