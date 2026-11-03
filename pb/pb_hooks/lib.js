@@ -121,7 +121,13 @@ function computeTimesheetHours(byDayMinutes, dailyLimit, weeklyLimit) {
   return { daily: daily, regular: round2(regular), overtime: round2(overtime) }
 }
 
-function workedMinutesByDay(app, employeeId, startDate, endDate) {
+function roundMinutes(minutes, step) {
+  const rounding = Number(step) || 0
+  if (rounding <= 0) return minutes
+  return Math.round(minutes / rounding) * rounding
+}
+
+function workedMinutesByDay(app, employeeId, startDate, endDate, roundingMinutes) {
   const punches = app.findRecordsByFilter(
     "punches",
     "employee = {:employee} && punched_at >= {:start} && punched_at < {:end}",
@@ -136,14 +142,33 @@ function workedMinutesByDay(app, employeeId, startDate, endDate) {
   )
   const byDay = {}
   let openAt = null
+  let breakAt = null
+  let breakMinutes = 0
   punches.forEach((p) => {
     const ts = toMs(p.getString("punched_at"))
-    if (p.getString("type") === "in") openAt = ts
-    else if (openAt !== null) {
+    const type = p.getString("type")
+    if (type === "in") {
+      openAt = ts
+      breakAt = null
+      breakMinutes = 0
+    } else if (type === "break_start") {
+      breakAt = ts
+    } else if (type === "break_end") {
+      if (breakAt !== null) {
+        breakMinutes += Math.max(0, (ts - breakAt) / 60000)
+        breakAt = null
+      }
+    } else if (type === "out" && openAt !== null) {
       const key = new Date(openAt).toISOString().slice(0, 10)
-      byDay[key] = (byDay[key] || 0) + Math.max(0, ts - openAt) / 60000
+      const worked = Math.max(0, (ts - openAt) / 60000 - breakMinutes)
+      byDay[key] = (byDay[key] || 0) + worked
       openAt = null
+      breakAt = null
+      breakMinutes = 0
     }
+  })
+  Object.keys(byDay).forEach((day) => {
+    byDay[day] = roundMinutes(byDay[day], roundingMinutes)
   })
   return byDay
 }
@@ -573,6 +598,7 @@ module.exports = {
   weekKey: weekKey,
   computeTimesheetHours: computeTimesheetHours,
   workedMinutesByDay: workedMinutesByDay,
+  roundMinutes: roundMinutes,
   buildStub: buildStub,
   syncPtoBalance: syncPtoBalance,
   applyPtoUsage: applyPtoUsage,

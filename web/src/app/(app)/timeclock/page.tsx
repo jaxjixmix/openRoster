@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, LogIn, LogOut, MapPin, Pencil, Users } from "lucide-react";
+import { Clock3, Coffee, LogIn, LogOut, MapPin, Pencil, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { pb } from "@/lib/pb";
 import { errorMessage, getEmployees, getPunchesBetween, getShiftsBetween, getTimesheets } from "@/lib/data";
@@ -282,11 +282,11 @@ export default function TimeClockPage() {
               {(isManager ? punches : punches.filter((p) => p.employee === employee?.id)).slice(0, 20).map((p) => (
                 <div key={p.id} className="flex items-center gap-3 px-5 py-2.5">
                   <span className={`flex size-7 items-center justify-center rounded-full ${p.type === "in" ? "bg-[#e5efe7] text-sage" : "bg-[#f6e2d8] text-accent"}`}>
-                    {p.type === "in" ? <LogIn className="size-3" /> : <LogOut className="size-3" />}
+                    {p.type === "in" ? <LogIn className="size-3" /> : p.type === "break_start" || p.type === "break_end" ? <Coffee className="size-3" /> : <LogOut className="size-3" />}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium">
-                      {isManager ? fullName(p.expand?.employee) : p.type === "in" ? "Clocked in" : "Clocked out"}
+                      {isManager ? fullName(p.expand?.employee) : p.type === "in" ? "Clocked in" : p.type === "out" ? "Clocked out" : p.type === "break_start" ? "Break started" : "Break ended"}
                     </p>
                     <p className="text-[10px] text-muted">{p.expand?.location?.name || "—"} · {p.source || "web"}</p>
                   </div>

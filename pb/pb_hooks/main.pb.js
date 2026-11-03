@@ -14,7 +14,9 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
   if (!employee) employee = h.employeeForUser(e.app, e.auth.id)
   if (!employee) return h.bad(e, "No employee profile is linked to this account.", 404)
 
-  const type = body.type === "out" ? "out" : "in"
+  const allowedTypes = ["in", "out", "break_start", "break_end"]
+  if (!allowedTypes.includes(body.type)) return h.bad(e, "Unknown punch type.")
+  const type = body.type
   const punches = e.app.findRecordsByFilter(
     "punches",
     "employee = {:employee}",
@@ -24,11 +26,21 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
     { employee: employee.id }
   )
   const last = punches.length ? punches[0] : null
-  if (type === "in" && last && last.getString("type") === "in") {
-    return h.bad(e, "Already clocked in at " + last.getString("punched_at") + ".", 409)
+  const lastType = last ? last.getString("type") : ""
+
+  if (type === "in") {
+    if (lastType === "in") return h.bad(e, "Already clocked in at " + last.getString("punched_at") + ".", 409)
+    if (lastType === "break_start") return h.bad(e, "End your break before clocking out or in again.", 409)
   }
-  if (type === "out" && (!last || last.getString("type") === "out")) {
-    return h.bad(e, "No open clock-in to close.", 409)
+  if (type === "out") {
+    if (!last || lastType === "out") return h.bad(e, "No open clock-in to close.", 409)
+    if (lastType === "break_start") return h.bad(e, "End your break before clocking out.", 409)
+  }
+  if (type === "break_start") {
+    if (lastType !== "in") return h.bad(e, "Clock in before starting a break.", 409)
+  }
+  if (type === "break_end") {
+    if (lastType !== "break_start") return h.bad(e, "No open break to end.", 409)
   }
 
   const punchLocationId = body.location || employee.getString("location")
@@ -74,18 +86,37 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
   )
   let worked = 0
   let openAt = null
+  let breakAt = null
+  let breakMs = 0
   todays.forEach((p) => {
-    if (p.getString("type") === "in") openAt = h.toMs(p.getString("punched_at"))
-    else if (openAt !== null) {
-      worked += h.toMs(p.getString("punched_at")) - openAt
+    const t = h.toMs(p.getString("punched_at"))
+    const punchType = p.getString("type")
+    if (punchType === "in") {
+      openAt = t
+      breakAt = null
+      breakMs = 0
+    } else if (punchType === "break_start") {
+      breakAt = t
+    } else if (punchType === "break_end") {
+      if (breakAt !== null) {
+        breakMs += Math.max(0, t - breakAt)
+        breakAt = null
+      }
+    } else if (punchType === "out" && openAt !== null) {
+      worked += Math.max(0, t - openAt - breakMs)
       openAt = null
+      breakAt = null
+      breakMs = 0
     }
   })
-  if (openAt !== null) worked += Date.now() - openAt
+  if (openAt !== null) {
+    worked += Math.max(0, Date.now() - openAt - breakMs - (breakAt !== null ? Date.now() - breakAt : 0))
+  }
 
   return e.json(200, {
     punch: punch,
-    clocked_in: type === "in",
+    clocked_in: type === "in" || type === "break_start",
+    on_break: type === "break_start",
     worked_minutes: Math.max(0, Math.round(worked / 60000)),
   })
 }, $apis.requireAuth())
@@ -284,7 +315,7 @@ routerAdd("POST", "/api/openroster/timesheets/generate", (e) => {
   e.app.runInTransaction((txApp) => {
     employees.forEach((emp) => {
       if (emp.getString("pay_type") === "salary") return
-      const punches = h.workedMinutesByDay(txApp, emp.id, startDate, endDate)
+      const punches = h.workedMinutesByDay(txApp, emp.id, startDate, endDate, company.getFloat("punch_rounding_minutes") || 0)
       const shifts = txApp.findRecordsByFilter(
         "shifts",
         "employee = {:employee} && starts_at >= {:start} && starts_at < {:end} && ends_at < {:now}",
@@ -621,7 +652,7 @@ routerAdd("POST", "/api/openroster/punches/correct", (e) => {
   e.app.runInTransaction((txApp) => {
     const punch = txApp.findRecordById("punches", body.punch)
     beforeState = h.snapshot(punch, ["type", "punched_at", "note"])
-    if (body.type === "in" || body.type === "out") punch.set("type", body.type)
+    if (["in", "out", "break_start", "break_end"].includes(body.type)) punch.set("type", body.type)
     if (body.punched_at) punch.set("punched_at", body.punched_at)
     punch.set("note", reason)
     txApp.save(punch)

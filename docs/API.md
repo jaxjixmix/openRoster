@@ -9,7 +9,7 @@ All routes except `status` and `setup` require `Authorization: <PocketBase auth 
 | GET | `/api/openroster/status` | public | `{ setup_required, demo_available }` |
 | POST | `/api/openroster/setup` | public once | Create company, location, admin and pay periods |
 | GET | `/api/openroster/bootstrap` | auth | Current user, employee, company, locations |
-| POST | `/api/openroster/clock` | auth | Clock in/out with `{type, offset_minutes?, lat?, lng?}` |
+| POST | `/api/openroster/clock` | auth | Punch with `{type: in|out|break_start|break_end, offset_minutes?, lat?, lng?}` |
 | POST | `/api/openroster/punches/correct` | manager | Correct a punch with `{punch, punched_at, type, reason}` |
 | POST | `/api/openroster/schedule/auto` | manager | Auto-fill `{week_start, location?, offsets}` |
 | POST | `/api/openroster/shifts/claim` | staff | Claim an open published shift `{shift}` |

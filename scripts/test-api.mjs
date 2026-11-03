@@ -240,6 +240,19 @@ async function main() {
     assert.equal(deleted.ok, false, "manager must not delete an employee");
     console.log("PASS destructive delete blocked");
 
+    const priya = (await request("/api/collections/employees/records?perPage=50", { token })).data.items.find((employee) => employee.first_name === "Priya");
+    assert.ok(priya, "Priya exists");
+    const breakIn = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "in", offset_minutes: -480 } });
+    assert.equal(breakIn.status, 200, "clock in");
+    const breakStart = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "break_start", offset_minutes: -480 } });
+    assert.equal(breakStart.status, 200, "break start");
+    assert.equal(breakStart.data.on_break, true);
+    const breakEnd = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "break_end", offset_minutes: -480 } });
+    assert.equal(breakEnd.status, 200, "break end");
+    const breakOut = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "out", offset_minutes: -480 } });
+    assert.equal(breakOut.status, 200, "clock out");
+    console.log("PASS break punches");
+
     const ptoEntries = await request("/api/collections/pto_entries/records?perPage=100", { token });
     assert.ok(ptoEntries.data.items.length > 0, "ledger seeded");
     const pendingLeave = await request("/api/collections/time_off_requests/records?perPage=10&filter=" + encodeURIComponent("status = 'pending'"), { token });

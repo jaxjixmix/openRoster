@@ -89,6 +89,7 @@ async function main() {
     overtime_multiplier: 1.5,
     pto_accrual_hours_per_period: 4,
     pto_accrual_hours_per_hour: 0,
+    punch_rounding_minutes: 0,
     address: "1 Ferry Building, San Francisco, CA",
     phone: "(415) 555-0142",
     setup_complete: true,

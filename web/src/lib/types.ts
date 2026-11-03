@@ -27,6 +27,7 @@ export interface Company extends BaseRecord {
   overtime_weekly_hours: number;
   overtime_daily_hours: number;
   overtime_multiplier: number;
+  punch_rounding_minutes?: number;
   pto_accrual_hours_per_period?: number;
   pto_accrual_hours_per_hour?: number;
   address?: string;
@@ -119,7 +120,7 @@ export interface Shift extends BaseRecord {
 export interface Punch extends BaseRecord {
   employee: string;
   location?: string;
-  type: "in" | "out";
+  type: "in" | "out" | "break_start" | "break_end";
   punched_at: string;
   source?: string;
   lat?: number;

@@ -154,3 +154,18 @@ test("geofence distance is in meters", () => {
   const oneDegree = h.distanceMeters(0, 0, 0, 1);
   assert.ok(oneDegree > 110000 && oneDegree < 112000);
 });
+
+test("breaks are subtracted from worked minutes and rounding is applied", () => {
+  const app = {
+    findRecordsByFilter: () => [
+      record({ type: "in", punched_at: "2026-11-02 09:00:00.000Z" }),
+      record({ type: "break_start", punched_at: "2026-11-02 12:00:00.000Z" }),
+      record({ type: "break_end", punched_at: "2026-11-02 12:30:00.000Z" }),
+      record({ type: "out", punched_at: "2026-11-02 17:00:00.000Z" }),
+    ],
+  };
+  assert.deepEqual(h.workedMinutesByDay(app, "emp", "2026-11-01", "2026-11-07"), { "2026-11-02": 450 });
+  assert.deepEqual(h.workedMinutesByDay(app, "emp", "2026-11-01", "2026-11-07", 30), { "2026-11-02": 450 });
+  assert.equal(h.roundMinutes(452, 15), 450);
+  assert.equal(h.roundMinutes(458, 15), 465);
+});

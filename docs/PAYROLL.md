@@ -24,6 +24,10 @@ OpenRoster is a scheduling and time-and-attendance tool with a **payroll preview
 
 Tax filing, W-2/1099, direct deposit, garnishments, tips, local taxes and multi-jurisdiction rules are **not implemented**.
 
+## Time rounding
+
+Companies can set `punch_rounding_minutes` (0 disables it). Daily worked minutes are rounded after breaks are subtracted, before overtime is calculated. Break punches (`break_start`/`break_end`) are stored in `punches` and shown on the time clock.
+
 ## PTO ledger
 
 `pto_entries` is the source of truth:

@@ -73,6 +73,7 @@ export default function SettingsPage() {
     overtime_multiplier: "1.5",
     pto_accrual_hours_per_period: "0",
     pto_accrual_hours_per_hour: "0",
+    punch_rounding_minutes: "0",
     address: "",
     phone: "",
   });
@@ -136,6 +137,7 @@ export default function SettingsPage() {
       overtime_multiplier: String(company.overtime_multiplier ?? 1.5),
       pto_accrual_hours_per_period: String(company.pto_accrual_hours_per_period ?? 0),
       pto_accrual_hours_per_hour: String(company.pto_accrual_hours_per_hour ?? 0),
+      punch_rounding_minutes: String(company.punch_rounding_minutes ?? 0),
       address: company.address || "",
       phone: company.phone || "",
     });
@@ -152,6 +154,7 @@ export default function SettingsPage() {
         overtime_multiplier: Number(companyForm.overtime_multiplier),
         pto_accrual_hours_per_period: Number(companyForm.pto_accrual_hours_per_period),
         pto_accrual_hours_per_hour: Number(companyForm.pto_accrual_hours_per_hour),
+        punch_rounding_minutes: Number(companyForm.punch_rounding_minutes),
       });
       await refresh();
       toast("Company settings saved.");
@@ -294,6 +297,7 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div><Label>PTO accrued / pay period</Label><Input type="number" step="0.25" value={companyForm.pto_accrual_hours_per_period} onChange={(e) => setCompanyForm({ ...companyForm, pto_accrual_hours_per_period: e.target.value })} disabled={!isAdmin} /></div>
                   <div><Label>PTO accrued / hour</Label><Input type="number" step="0.01" value={companyForm.pto_accrual_hours_per_hour} onChange={(e) => setCompanyForm({ ...companyForm, pto_accrual_hours_per_hour: e.target.value })} disabled={!isAdmin} /></div>
+                  <div><Label>Punch rounding (min)</Label><Input type="number" min="0" step="1" value={companyForm.punch_rounding_minutes} onChange={(e) => setCompanyForm({ ...companyForm, punch_rounding_minutes: e.target.value })} disabled={!isAdmin} /></div>
                 </div>
                 <div className="rounded-lg bg-[#f4f1e9] p-3 text-[11px] leading-relaxed text-muted">
                   Payroll uses these rules plus the rates in Pay rules. It does not file taxes or connect to a payment provider.

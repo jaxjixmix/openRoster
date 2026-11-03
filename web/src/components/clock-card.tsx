@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, LogIn, LogOut, MapPin, RefreshCw } from "lucide-react";
+import { Clock3, Coffee, LogIn, LogOut, MapPin, RefreshCw } from "lucide-react";
 import { pb } from "@/lib/pb";
 import { getPunchesBetween, errorMessage } from "@/lib/data";
 import { addDaysStr, formatTime, toDate, todayIn, toUtcIso, tzOffsetForDate } from "@/lib/dates";
@@ -75,26 +75,46 @@ export function ClockCard({
     return () => unsub?.();
   }, [targetId, load]);
 
-  const open = useMemo(() => {
-    let openAt: number | null = null;
-    for (const p of punches) {
-      if (p.type === "in") openAt = +toDate(p.punched_at);
-      else if (openAt !== null) openAt = null;
+  const latestType = punches.length ? punches[punches.length - 1].type : "";
+  const clockedIn = latestType === "in" || latestType === "break_start" || latestType === "break_end";
+  const onBreak = latestType === "break_start";
+
+  const currentInAt = useMemo(() => {
+    for (let i = punches.length - 1; i >= 0; i--) {
+      if (punches[i].type === "in") return +toDate(punches[i].punched_at);
+      if (punches[i].type === "out") return null;
     }
-    return openAt;
+    return null;
   }, [punches]);
 
   const workedMs = useMemo(() => {
     let total = 0;
     let openAt: number | null = null;
+    let breakAt: number | null = null;
+    let breakMs = 0;
     for (const p of punches) {
-      if (p.type === "in") openAt = +toDate(p.punched_at);
-      else if (openAt !== null) {
-        total += +toDate(p.punched_at) - openAt;
+      const t = +toDate(p.punched_at);
+      if (p.type === "in") {
+        openAt = t;
+        breakAt = null;
+        breakMs = 0;
+      } else if (p.type === "break_start") {
+        breakAt = t;
+      } else if (p.type === "break_end") {
+        if (breakAt !== null) {
+          breakMs += Math.max(0, t - breakAt);
+          breakAt = null;
+        }
+      } else if (p.type === "out" && openAt !== null) {
+        total += Math.max(0, t - openAt - breakMs);
         openAt = null;
+        breakAt = null;
+        breakMs = 0;
       }
     }
-    if (openAt !== null) total += now - openAt;
+    if (openAt !== null) {
+      total += Math.max(0, now - openAt - breakMs - (breakAt !== null ? now - breakAt : 0));
+    }
     return total;
   }, [punches, now]);
 
@@ -109,7 +129,7 @@ export function ClockCard({
     })
   }
 
-  async function punch(type: "in" | "out") {
+  async function punch(type: "in" | "out" | "break_start" | "break_end") {
     setBusy(true);
     setError("");
     try {
@@ -127,7 +147,12 @@ export function ClockCard({
       });
       await load();
       onChanged?.();
-      toast(type === "in" ? "Clocked in." : "Clocked out. Nice work.");
+      toast(
+        type === "in" ? "Clocked in."
+          : type === "out" ? "Clocked out. Nice work."
+            : type === "break_start" ? "Break started."
+              : "Break ended.",
+      );
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -139,7 +164,6 @@ export function ClockCard({
     return <ErrorNote>No employee profile is linked to this account.</ErrorNote>;
   }
 
-  const clockedIn = open !== null;
   const todayLabel = new Date().toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
@@ -157,14 +181,14 @@ export function ClockCard({
           <div>
             <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-[#a7a18f]">
               <Clock3 className="size-3.5" />
-              {clockedIn ? "On the clock" : "Time clock"}
+              {onBreak ? "On break" : clockedIn ? "On the clock" : "Time clock"}
             </div>
             <div className="mt-3 font-mono text-[34px] font-medium leading-none tracking-[-0.04em] tabular sm:text-[42px]">
               {clockedIn ? elapsedLabel(workedMs) : todayLabel}
             </div>
             <p className="mt-2 text-xs text-[#a7a18f]">
               {clockedIn
-                ? `Clocked in at ${formatTime(new Date(open).toISOString(), tz)} · ${(workedMs / 3600000).toFixed(2)}h today`
+                ? `${onBreak ? "On break since " + formatTime(new Date(punches[punches.length - 1].punched_at).toISOString(), tz) : "Clocked in at " + (currentInAt ? formatTime(new Date(currentInAt).toISOString(), tz) : "—")} · ${(workedMs / 3600000).toFixed(2)}h today`
                 : "You are clocked out. Your hours land in this week's timesheet."}
             </p>
           </div>
@@ -176,23 +200,33 @@ export function ClockCard({
             }`}
           >
             <span className={`size-1.5 rounded-full ${clockedIn ? "animate-pulse bg-[#7fc79a]" : "bg-[#6d685b]"}`} />
-            {clockedIn ? "Working" : "Off"}
+            {onBreak ? "On break" : clockedIn ? "Working" : "Off"}
           </span>
         </div>
       </div>
 
       <div className={compact ? "mt-4" : "px-5 py-4"}>
         <div className="flex items-center gap-2">
-          <Button
-            variant={clockedIn ? "outline" : "accent"}
-            className="flex-1"
-            size="lg"
-            loading={busy}
-            onClick={() => punch(clockedIn ? "out" : "in")}
-          >
-            {clockedIn ? <LogOut className="size-4" /> : <LogIn className="size-4" />}
-            {clockedIn ? "Clock out" : "Clock in"}
-          </Button>
+          {!clockedIn && (
+            <Button variant="accent" className="flex-1" size="lg" loading={busy} onClick={() => punch("in")}>
+              <LogIn className="size-4" /> Clock in
+            </Button>
+          )}
+          {clockedIn && onBreak && (
+            <Button variant="accent" className="flex-1" size="lg" loading={busy} onClick={() => punch("break_end")}>
+              <Coffee className="size-4" /> End break
+            </Button>
+          )}
+          {clockedIn && !onBreak && (
+            <>
+              <Button variant="outline" className="flex-1" size="lg" loading={busy} onClick={() => punch("break_start")}>
+                <Coffee className="size-4" /> Break
+              </Button>
+              <Button variant="outline" className="flex-1" size="lg" loading={busy} onClick={() => punch("out")}>
+                <LogOut className="size-4" /> Clock out
+              </Button>
+            </>
+          )}
           <Button variant="ghost" size="icon" onClick={() => void load()} title="Refresh punches">
             <RefreshCw className="size-4" />
           </Button>
@@ -207,8 +241,8 @@ export function ClockCard({
               {punches.slice(-6).map((p) => (
                 <div key={p.id} className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-muted">
-                    {p.type === "in" ? <LogIn className="size-3 text-sage" /> : <LogOut className="size-3 text-accent" />}
-                    {p.type === "in" ? "In" : "Out"}
+                    {p.type === "in" ? <LogIn className="size-3 text-sage" /> : p.type === "break_start" ? <Coffee className="size-3 text-gold" /> : p.type === "break_end" ? <Coffee className="size-3 text-sage" /> : <LogOut className="size-3 text-accent" />}
+                    {p.type === "in" ? "In" : p.type === "out" ? "Out" : p.type === "break_start" ? "Break" : "Break end"}
                     {p.expand?.location && (
                       <span className="hidden items-center gap-0.5 text-[10px] text-muted/70 sm:flex">
                         <MapPin className="size-2.5" />
