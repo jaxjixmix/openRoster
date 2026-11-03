@@ -356,6 +356,7 @@ routerAdd("POST", "/api/openroster/timesheets/approve", (e) => {
   if (!ids.length) return h.bad(e, "No timesheets selected.")
 
   let approved = 0
+  const approvedIds = []
   e.app.runInTransaction((txApp) => {
     ids.forEach((id) => {
       const sheet = txApp.findRecordById("timesheets", id)
@@ -369,8 +370,13 @@ routerAdd("POST", "/api/openroster/timesheets/approve", (e) => {
       sheet.set("approved_by", e.auth.id)
       sheet.set("approved_at", new Date().toISOString())
       txApp.save(sheet)
+      approvedIds.push(id)
       approved++
     })
+  })
+
+  approvedIds.forEach((id) => {
+    h.audit(e.app, e.auth, "timesheets", id, "update", "Timesheet approved")
   })
 
   return e.json(200, { approved: approved })

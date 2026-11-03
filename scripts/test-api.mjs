@@ -168,6 +168,19 @@ async function main() {
     assert.ok(generated.data.sheets >= 0);
     console.log("PASS timesheet generation");
 
+    const openSheetsRes = await request("/api/collections/timesheets/records?perPage=50", { token });
+    const openIds = openSheetsRes.data.items.filter((sheet) => sheet.status === "open" || sheet.status === "submitted").map((sheet) => sheet.id);
+    if (openIds.length) {
+      const bulk = await request("/api/openroster/timesheets/approve", {
+        method: "POST",
+        token,
+        body: { ids: openIds },
+      });
+      assert.equal(bulk.status, 200, "bulk timesheet approval");
+      assert.equal(bulk.data.approved, openIds.length);
+    }
+    console.log("PASS bulk timesheet approval");
+
     const preview = await request("/api/openroster/payroll/preview", {
       method: "POST",
       token,
