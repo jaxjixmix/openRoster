@@ -136,6 +136,7 @@ The PocketBase dashboard is at http://localhost:8097/_/; keep it private.
 make test        # payroll, timesheet and date unit tests
 make test-api    # fresh PocketBase: seed, login, auto-fill, timesheets, payroll, locks, setup
 make test-ui     # Playwright: seeded dashboard/schedule/payroll + first-run setup
+make types       # regenerate PocketBase TypeScript definitions (PB must be running)
 cd web && npm run lint && npm run build
 ```
 
@@ -210,6 +211,7 @@ pb/
   pb_hooks/main.pb.js   routes + validation + audit
   pb_hooks/lib.js       shared domain helpers
 web/
+  src/lib/pb-generated.ts  generated PocketBase collection types
   src/app/(app)/        Today, Schedule, Time Clock, Timesheets, Requests,
                         People, Payroll, Reports, Settings
   src/app/setup/        first-run wizard

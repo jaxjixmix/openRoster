@@ -15,6 +15,12 @@ docker compose up -d
 
 Migrations run automatically when PocketBase starts. If a migration fails, keep the old containers stopped and restore the backup.
 
+After schema changes, regenerate the PocketBase TypeScript definitions while the server is running:
+
+```bash
+PB_SUPERUSER_PASSWORD='...' make types
+```
+
 ## Local
 
 ```bash

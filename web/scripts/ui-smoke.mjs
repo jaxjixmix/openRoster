@@ -105,6 +105,10 @@ async function main() {
 
     await page.getByRole("button", { name: /Add shift/ }).first().click();
     await page.getByRole("dialog").waitFor();
+    const unlabeled = await page.evaluate(() =>
+      [...document.querySelectorAll("label")].filter((label) => !label.htmlFor && !label.querySelector("input,select,textarea")).length
+    );
+    assert.equal(unlabeled, 0, "every label is associated with a control");
     assert.match(await page.getByRole("dialog").innerText(), /Create a shift/);
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({ state: "hidden" });
