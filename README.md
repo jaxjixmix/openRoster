@@ -20,7 +20,7 @@ OpenRoster is a **working alpha**. Current release: **v0.3.0-alpha**. The delive
 
 - [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
 - [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — complete: pay periods, PTO ledger, printable stubs, locale, pay-period clock, DST tests, breaks/rounding, geofence, punch corrections, kiosk PIN, currency/CSV.
-- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service profile/availability and open-shift claiming. Remaining: notifications, copy week, labor budget, certifications, swaps.
+- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service, open-shift claiming, in-app/email notifications with preferences. Remaining: copy week, labor budget, certifications, swaps, time-off calendar.
 - [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs and CSV. Remaining: monitoring, type generation, i18n/PWA, accessibility pass.
 - [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
 
@@ -39,6 +39,7 @@ OpenRoster is a **working alpha**. Current release: **v0.3.0-alpha**. The delive
 - **People** — profiles, pay, availability, documents, PTO ledger, recent punches, archive/restore.
 - **Time off** — requests, approve/deny queue, balances.
 - **Reports** — scheduled vs actual hours, labor by department, coverage, overtime watch.
+- **Notifications** — in-app bell with optional email delivery through PocketBase mail settings.
 - **Exports** — CSV for timesheets, payroll preview, people and schedules.
 - **Settings** — company, locations, departments, positions, pay rules, holidays, role-based access, audit log.
 
@@ -191,7 +192,7 @@ OpenRoster is a complete workflow, not a compliance product.
 - **Geofence is best-effort.** When the browser shares coordinates, clock-in rejects a punch outside the location radius. If permission is denied, the punch is accepted.
 - **No shift swaps, recurring shifts, copy-week, labor budgets, certifications, or push notifications yet.**
 - **Kiosk PIN is a UI lock, not an authentication boundary.** Use a locked-down tablet and HTTPS.
-- **No automated email/SMS.** In-app notifications are also not implemented yet.
+- **Email notifications require SMTP.** In-app notifications are built in; email is opt-in and needs PocketBase mail settings.
 - **No payroll tax engine or payment provider.** Pay stubs are printable, not filed.
 - **No translation/i18n.** Locale controls currency/date formatting; UI copy is English. Break punches, rounding and a kiosk PIN are supported.
 - **Locations share the company timezone in this alpha.** Per-location timezones are stored but not used for scheduling.

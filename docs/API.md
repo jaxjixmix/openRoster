@@ -37,3 +37,7 @@ curl -s http://127.0.0.1:8097/api/openroster/bootstrap \
 - Shift local wall times are stored in `local_date`, `local_start`, `local_end` for availability checks.
 - Pay periods are generated from `companies.pay_frequency`; pay date defaults to period end + 5 days.
 - Payroll is a preview/export tool, not a tax engine.
+
+## Notifications
+
+`notifications` is a normal PocketBase collection. Each record belongs to one `user`; list/view/update rules only expose the owner's records. `users.notification_prefs` stores `{ in_app: boolean, email: boolean }`. In-app delivery is always written for eligible events; email is opt-in and uses PocketBase mail settings.

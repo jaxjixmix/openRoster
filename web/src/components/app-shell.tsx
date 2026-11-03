@@ -24,6 +24,7 @@ import { useAuth } from "@/lib/auth";
 import { roleLabel } from "@/lib/format";
 import { Avatar, Badge } from "@/components/ui";
 import { CurrencyProvider } from "@/lib/currency";
+import { NotificationBell } from "@/components/notification-bell";
 
 const NAV = [
   { href: "/", label: "Today", icon: LayoutDashboard, manager: false },
@@ -61,9 +62,12 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <p className="truncate text-sm font-semibold tracking-tight">OpenRoster</p>
           <p className="truncate text-[11px] text-[#a7a18f]">{company?.name || "Workforce"}</p>
         </div>
-        <span className="ml-auto rounded-md border border-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-[#a7a18f]">
-          {company?.currency || "USD"}
-        </span>
+        <div className="ml-auto flex items-center gap-1">
+          <NotificationBell dark />
+          <span className="rounded-md border border-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-[#a7a18f]">
+            {company?.currency || "USD"}
+          </span>
+        </div>
       </div>
 
       <div className="mx-5 mb-5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
@@ -181,7 +185,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Logo />
             <span className="text-sm font-semibold">OpenRoster</span>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1.5">
+            <NotificationBell />
             {!isManager && employee && <Badge tone="sage">Staff</Badge>}
             <Avatar name={user.name} id={user.id} size="sm" />
           </div>

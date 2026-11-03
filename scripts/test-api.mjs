@@ -190,6 +190,10 @@ async function main() {
     assert.equal(claimed.data.shift.employee, sam.id);
     console.log("PASS open shift claim");
 
+    const notifications = await request("/api/collections/notifications/records?perPage=20", { token: samLogin.data.token });
+    assert.ok(notifications.data.items.some((notification) => notification.title === "Shift claimed"), "claim creates notification");
+    console.log("PASS in-app notification");
+
     const auto = await request("/api/openroster/schedule/auto", {
       method: "POST",
       token,

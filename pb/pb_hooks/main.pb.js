@@ -423,6 +423,8 @@ routerAdd("POST", "/api/openroster/shifts/claim", (e) => {
     shift.set("source", "swap")
   })
   h.audit(e.app, e.auth, "shifts", shift.id, "schedule", "Claimed open shift")
+  h.notifyEmployee(e.app, employee.id, "claim", "Shift claimed", "Your claimed shift is now on your schedule.", "/schedule")
+  h.notifyManagers(e.app, "claim", "Open shift claimed", "A team member claimed an open shift.", "/schedule")
   return e.json(200, { shift: shift })
 }, $apis.requireAuth())
 
@@ -605,6 +607,20 @@ routerAdd("POST", "/api/openroster/payroll/status", (e) => {
   const saved = e.app.findRecordById("pay_runs", body.run)
   afterState = h.snapshot(saved, ["status", "period_start", "period_end", "total_gross", "total_tax", "total_deductions", "total_net", "void_reason"])
   h.audit(e.app, e.auth, "pay_runs", body.run, "payroll", "Pay run marked " + status + (paidSheets ? " (" + paidSheets + " timesheets paid)" : ""), beforeState, afterState)
+
+  if (status === "paid") {
+    const stubs = e.app.findRecordsByFilter("pay_stubs", "pay_run = {:run}", "", 1000, 0, { run: body.run })
+    stubs.forEach((stub) => {
+      h.notifyEmployee(
+        e.app,
+        stub.getString("employee"),
+        "payroll",
+        "Pay statement available",
+        "Your pay statement is ready for the period ending " + saved.getString("period_end").slice(0, 10) + ".",
+        "/payroll/stub/" + stub.id
+      )
+    })
+  }
 
   return e.json(200, { ok: true, timesheets_paid: paidSheets })
 }, $apis.requireAuth())
@@ -820,6 +836,16 @@ onRecordCreateRequest((e) => {
     if (assignmentError) throw new BadRequestError(assignmentError)
   }
   e.next()
+  if (!e.auth.isSuperuser() && e.record.getString("status") === "published" && e.record.getString("employee")) {
+    h.notifyEmployee(
+      e.app,
+      e.record.getString("employee"),
+      "schedule",
+      "New shift assigned",
+      "You have a shift on " + h.isoDate(e.record.getString("local_date") || e.record.getString("starts_at")) + " " + e.record.getString("local_start") + "–" + e.record.getString("local_end") + ".",
+      "/schedule"
+    )
+  }
 }, "shifts")
 
 onRecordUpdateRequest((e) => {
@@ -841,6 +867,16 @@ onRecordUpdateRequest((e) => {
     if (assignmentError) throw new BadRequestError(assignmentError)
   }
   e.next()
+  if (!e.auth.isSuperuser() && e.record.getString("status") === "published" && e.record.getString("employee")) {
+    h.notifyEmployee(
+      e.app,
+      e.record.getString("employee"),
+      "schedule",
+      "Shift updated",
+      "Your shift on " + h.isoDate(e.record.getString("local_date") || e.record.getString("starts_at")) + " was updated.",
+      "/schedule"
+    )
+  }
 }, "shifts")
 
 onRecordCreateRequest((e) => {
@@ -867,6 +903,9 @@ onRecordCreateRequest((e) => {
   if (!h.isManager(e.auth) || !e.record.getString("status")) e.record.set("status", "pending")
   e.next()
   if (e.record.getString("status") === "approved") h.applyPtoUsage(e.app, e.record)
+  if (!e.auth.isSuperuser()) {
+    h.notifyManagers(e.app, "timeoff", "New time off request", "A team member requested time off.", "/requests")
+  }
 }, "time_off_requests")
 
 onRecordUpdateRequest((e) => {
@@ -877,6 +916,16 @@ onRecordUpdateRequest((e) => {
   const approved = e.record.getString("status") === "approved"
   if (approved) h.applyPtoUsage(e.app, e.record)
   else if (wasApproved) h.removePtoUsage(e.app, e.record.id, e.record.getString("employee"))
+  if (!e.auth.isSuperuser() && e.record.getString("status") !== (original ? original.getString("status") : "")) {
+    h.notifyEmployee(
+      e.app,
+      e.record.getString("employee"),
+      "timeoff",
+      "Time off " + e.record.getString("status"),
+      "Your time off request was " + e.record.getString("status") + ".",
+      "/requests"
+    )
+  }
 }, "time_off_requests")
 
 onRecordDeleteRequest((e) => {

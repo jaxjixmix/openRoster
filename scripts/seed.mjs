@@ -138,6 +138,7 @@ async function main() {
   ];
 
   const employees = {};
+  const demoUsers = {};
   for (let i = 0; i < people.length; i++) {
     const p = people[i];
     const user = await create("users", {
@@ -149,6 +150,7 @@ async function main() {
       phone: `(415) 555-01${String(10 + i).padStart(2, "0")}`,
       verified: true,
     });
+    demoUsers[p.first.toLowerCase()] = user;
     const emp = await create("employees", {
       user: user.id,
       company: company.id,
@@ -180,6 +182,20 @@ async function main() {
     });
   }
   console.log("Employees:", Object.keys(employees).length);
+  await create("notifications", {
+    user: demoUsers.maya.id,
+    type: "system",
+    title: "Welcome to OpenRoster",
+    body: "Your demo workspace is ready. Start with the schedule or the time clock.",
+    link: "/schedule",
+  });
+  await create("notifications", {
+    user: demoUsers.jordan.id,
+    type: "system",
+    title: "Welcome to OpenRoster",
+    body: "Your demo workspace is ready. Start with the schedule or the time clock.",
+    link: "/schedule",
+  });
 
   // Availability: weekdays 0=Sun ... 6=Sat. Only for hourly staff.
   const availability = {

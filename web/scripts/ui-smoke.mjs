@@ -91,6 +91,12 @@ async function main() {
     assert.match(dashboard, /Alpha/);
     console.log("PASS dashboard");
 
+    await page.getByRole("button", { name: "Notifications" }).first().click();
+    await page.getByRole("dialog").waitFor();
+    assert.match(await page.getByRole("dialog").innerText(), /Welcome to OpenRoster/);
+    await page.keyboard.press("Escape");
+    console.log("PASS notification bell");
+
     await page.goto(`${WEB_URL}/schedule`, { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     assert.equal(await page.locator("h1").first().innerText(), "Schedule");

@@ -14,6 +14,7 @@ export interface User extends BaseRecord {
   phone?: string;
   avatar?: string;
   verified?: boolean;
+  notification_prefs?: { in_app?: boolean; email?: boolean };
 }
 
 export interface Company extends BaseRecord {
@@ -314,4 +315,13 @@ export interface PayrollPreview {
     deductions: number;
     net: number;
   };
+}
+
+export interface AppNotification extends BaseRecord {
+  user: string;
+  type: "schedule" | "timeoff" | "payroll" | "claim" | "system";
+  title: string;
+  body?: string;
+  link?: string;
+  read?: boolean;
 }

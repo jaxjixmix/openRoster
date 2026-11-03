@@ -537,6 +537,72 @@ function accruePto(app, employee, amount, periodStart, periodEnd, createdBy) {
   syncPtoBalance(app, employee.id)
 }
 
+function notificationPrefs(user) {
+  let prefs = {}
+  try { prefs = user.get("notification_prefs") || {} } catch (err) {}
+  if (typeof prefs === "string") {
+    try { prefs = JSON.parse(prefs) } catch (err) { prefs = {} }
+  }
+  return {
+    in_app: prefs.in_app !== false,
+    email: prefs.email === true,
+  }
+}
+
+function notify(app, userId, type, title, body, link) {
+  if (!userId) return
+  let user = null
+  try { user = app.findRecordById("users", userId) } catch (err) { return }
+  const prefs = notificationPrefs(user)
+
+  if (prefs.in_app) {
+    try {
+      const record = new Record(app.findCollectionByNameOrId("notifications"))
+      record.set("user", userId)
+      record.set("type", type)
+      record.set("title", title)
+      record.set("body", body || "")
+      record.set("link", link || "")
+      record.set("read", false)
+      app.save(record)
+    } catch (err) {
+      console.log("notification create failed: " + err)
+    }
+  }
+
+  if (prefs.email && user.getString("email")) {
+    try {
+      const settings = app.settings()
+      const message = new MailerMessage({
+        from: {
+          address: settings.meta.senderAddress || "no-reply@openroster.local",
+          name: settings.meta.senderName || "OpenRoster",
+        },
+        to: [{ address: user.getString("email") }],
+        subject: title,
+        html: "<p>" + String(body || "").replace(/</g, "&lt;") + "</p>" +
+          (link ? "<p><a href=\"" + link + "\">Open OpenRoster</a></p>" : ""),
+      })
+      app.newMailClient().send(message)
+    } catch (err) {
+      console.log("notification email failed: " + err)
+    }
+  }
+}
+
+function notifyEmployee(app, employeeId, type, title, body, link) {
+  if (!employeeId) return
+  try {
+    const employee = app.findRecordById("employees", employeeId)
+    if (employee.getString("user")) notify(app, employee.getString("user"), type, title, body, link)
+  } catch (err) {}
+}
+
+function notifyManagers(app, type, title, body, link) {
+  const users = app.findRecordsByFilter("users", "role = 'admin' || role = 'manager'", "name", 100, 0)
+  users.forEach((user) => notify(app, user.id, type, title, body, link))
+}
+
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const earth = 6371000
   const toRad = (value) => (value * Math.PI) / 180
@@ -604,6 +670,10 @@ module.exports = {
   applyPtoUsage: applyPtoUsage,
   removePtoUsage: removePtoUsage,
   accruePto: accruePto,
+  notify: notify,
+  notifyEmployee: notifyEmployee,
+  notifyManagers: notifyManagers,
+  notificationPrefs: notificationPrefs,
   distanceMeters: distanceMeters,
   snapshot: snapshot,
   sameFields: sameFields,
