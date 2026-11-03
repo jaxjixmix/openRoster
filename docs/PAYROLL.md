@@ -42,4 +42,4 @@ Tax filing, W-2/1099, direct deposit, garnishments, tips, local taxes and multi-
 - accrual caps, waiting periods, carryover expiry and jurisdiction-specific PTO
 - tax tables, filings, direct deposit
 - full pay-period calendar UI (generation and selection are implemented; editing/closure is automatic)
-- locale-specific date formatting beyond currency/Intl in the browser
+- translated UI copy (locale only changes currency/date formatting)

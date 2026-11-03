@@ -30,6 +30,7 @@ export function ClockCard({
   const { employee, company, isManager } = useAuth();
   const toast = useToast();
   const tz = company?.timezone || "America/Los_Angeles";
+  const locale = company?.locale || "en-US";
   const targetId = employeeId || employee?.id;
   const [punches, setPunches] = useState<Punch[]>([]);
   const [now, setNow] = useState(Date.now());
@@ -139,7 +140,7 @@ export function ClockCard({
   }
 
   const clockedIn = open !== null;
-  const todayLabel = new Date().toLocaleTimeString("en-US", {
+  const todayLabel = new Date().toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",

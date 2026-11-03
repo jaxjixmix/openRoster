@@ -668,6 +668,7 @@ routerAdd("POST", "/api/openroster/setup", (e) => {
   const locationAddress = String(body.location_address || "").trim()
   const timezone = String(body.timezone || "America/Los_Angeles")
   const currency = String(body.currency || "USD").toUpperCase().slice(0, 3)
+  const locale = String(body.locale || "en-US")
   const weekStart = String(body.week_start || "1") === "0" ? "0" : "1"
 
   if (!companyName) return e.json(400, { message: "Company name is required." })
@@ -683,6 +684,7 @@ routerAdd("POST", "/api/openroster/setup", (e) => {
     company.set("legal_name", companyName)
     company.set("timezone", timezone)
     company.set("currency", currency)
+    company.set("locale", locale)
     company.set("week_start", weekStart)
     company.set("pay_frequency", "biweekly")
     company.set("overtime_weekly_hours", 40)

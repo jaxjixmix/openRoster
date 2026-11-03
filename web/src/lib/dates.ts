@@ -6,8 +6,16 @@ import {
   startOfWeek,
 } from "date-fns";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
+import { enUS, enGB, enAU, fr, de, es, ptBR, type Locale } from "date-fns/locale";
 
 export const DEFAULT_TZ = "America/Los_Angeles";
+
+const LOCALES: Record<string, Locale> = { "en-US": enUS, "en-GB": enGB, "en-AU": enAU, "fr-FR": fr, "de-DE": de, "es-ES": es, "pt-BR": ptBR };
+let currentLocale = enUS;
+
+export function setLocale(code: string) {
+  currentLocale = LOCALES[code] || enUS;
+}
 
 // PocketBase returns "YYYY-MM-DD HH:mm:ss.sssZ"; Safari wants the T separator.
 export function toDate(value: string | Date): Date {
@@ -35,39 +43,39 @@ export function weekDates(start: string): string[] {
 }
 
 export function weekdayShort(date: string): string {
-  return format(parseISO(date + "T00:00:00"), "EEE");
+  return format(parseISO(date + "T00:00:00"), "EEE", { locale: currentLocale });
 }
 
 export function weekdayLong(date: string): string {
-  return format(parseISO(date + "T00:00:00"), "EEEE");
+  return format(parseISO(date + "T00:00:00"), "EEEE", { locale: currentLocale });
 }
 
 export function monthDay(date: string): string {
-  return format(parseISO(date + "T00:00:00"), "MMM d");
+  return format(parseISO(date + "T00:00:00"), "MMM d", { locale: currentLocale });
 }
 
 export function longDate(date: string): string {
-  return format(parseISO(date + "T00:00:00"), "EEEE, MMMM d");
+  return format(parseISO(date + "T00:00:00"), "EEEE, MMMM d", { locale: currentLocale });
 }
 
 export function todayLabel(date: string): string {
-  return format(parseISO(date + "T00:00:00"), "MMM d, yyyy");
+  return format(parseISO(date + "T00:00:00"), "MMM d, yyyy", { locale: currentLocale });
 }
 
 export function formatTime(iso: string, tz: string): string {
-  return formatInTimeZone(toDate(iso), tz, "h:mm a");
+  return formatInTimeZone(toDate(iso), tz, "h:mm a", { locale: currentLocale });
 }
 
 export function formatTimeShort(iso: string, tz: string): string {
-  return formatInTimeZone(toDate(iso), tz, "h:mm");
+  return formatInTimeZone(toDate(iso), tz, "h:mm", { locale: currentLocale });
 }
 
 export function formatDateTime(iso: string, tz: string): string {
-  return formatInTimeZone(toDate(iso), tz, "MMM d, h:mm a");
+  return formatInTimeZone(toDate(iso), tz, "MMM d, h:mm a", { locale: currentLocale });
 }
 
 export function formatDate(iso: string, tz: string): string {
-  return formatInTimeZone(toDate(iso), tz, "MMM d, yyyy");
+  return formatInTimeZone(toDate(iso), tz, "MMM d, yyyy", { locale: currentLocale });
 }
 
 export function minutesFromMidnight(iso: string, tz: string): number {

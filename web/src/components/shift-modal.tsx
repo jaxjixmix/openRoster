@@ -44,6 +44,7 @@ export function ShiftModal({
 }: Props) {
   const toast = useToast();
   const { company } = useAuth();
+  const locale = company?.locale || "en-US";
   const [location, setLocation] = useState("");
   const [department, setDepartment] = useState("");
   const [position, setPosition] = useState("");
@@ -280,7 +281,7 @@ export function ShiftModal({
               <div className="rounded-xl bg-[#f2eee3] p-4">
                 <p className="eyebrow">When</p>
                 <p className="mt-1 text-sm font-medium">
-                  {toDate(shift.starts_at).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: tz })}
+                  {toDate(shift.starts_at).toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric", timeZone: tz })}
                 </p>
                 <p className="text-sm text-muted">
                   {timeInTz(shift.starts_at, tz)} – {timeInTz(shift.ends_at, tz)} · break {shift.break_minutes || 0} min

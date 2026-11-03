@@ -65,6 +65,7 @@ export default function SettingsPage() {
     legal_name: "",
     timezone: "America/Los_Angeles",
     currency: "USD",
+    locale: "en-US",
     week_start: "1",
     pay_frequency: "biweekly",
     overtime_weekly_hours: "40",
@@ -127,6 +128,7 @@ export default function SettingsPage() {
       legal_name: company.legal_name || "",
       timezone: company.timezone || "America/Los_Angeles",
       currency: company.currency || "USD",
+      locale: company.locale || "en-US",
       week_start: company.week_start || "1",
       pay_frequency: company.pay_frequency || "biweekly",
       overtime_weekly_hours: String(company.overtime_weekly_hours ?? 40),
@@ -240,6 +242,14 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                   <div><Label>Currency</Label><Input value={companyForm.currency} onChange={(e) => setCompanyForm({ ...companyForm, currency: e.target.value.toUpperCase() })} maxLength={3} /></div>
+                  <div>
+                    <Label>Locale</Label>
+                    <Select value={companyForm.locale} onChange={(e) => setCompanyForm({ ...companyForm, locale: e.target.value })}>
+                      {["en-US", "en-GB", "en-AU", "fr-FR", "de-DE", "es-ES", "pt-BR"].map((locale) => (
+                        <option key={locale} value={locale}>{locale}</option>
+                      ))}
+                    </Select>
+                  </div>
                   <div>
                     <Label>Week starts</Label>
                     <Select value={companyForm.week_start} onChange={(e) => setCompanyForm({ ...companyForm, week_start: e.target.value })}>
@@ -426,7 +436,7 @@ export default function SettingsPage() {
                         {record.expand?.actor?.name || "System"} · {record.collection || "—"}
                       </p>
                     </div>
-                    <span className="text-[10px] text-muted">{record.at ? toDate(record.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</span>
+                    <span className="text-[10px] text-muted">{record.at ? toDate(record.at).toLocaleString(company.locale || "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</span>
                   </div>
                 );
               })}

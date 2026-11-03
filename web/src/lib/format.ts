@@ -1,7 +1,7 @@
 import type { Employee } from "./types";
 
-export function money(value: number | undefined, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
+export function money(value: number | undefined, currency = "USD", locale = "en-US"): string {
+  return new Intl.NumberFormat(locale || "en-US", {
     style: "currency",
     currency,
     maximumFractionDigits: 2,

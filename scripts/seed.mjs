@@ -81,6 +81,7 @@ async function main() {
     legal_name: `Harbor & Hearth Hospitality ${suffix}`,
     timezone: "America/Los_Angeles",
     currency: "USD",
+    locale: "en-US",
     week_start: "1",
     pay_frequency: "biweekly",
     overtime_weekly_hours: 40,

@@ -5,6 +5,7 @@ import { Clock, MapPin, UserRound } from "lucide-react";
 import type { Shift } from "@/lib/types";
 import { dateInTz, durationLabel, formatTime, toDate } from "@/lib/dates";
 import { fullName } from "@/lib/format";
+import { useAuth } from "@/lib/auth";
 import { Avatar, Badge } from "@/components/ui";
 
 const FALLBACK_COLORS = ["#C4552D", "#3F6B57", "#7B5C9E", "#A97B2F", "#3D6B8A"];
@@ -32,6 +33,8 @@ export function ShiftRow({
   href?: string;
   compact?: boolean;
 }) {
+  const { company } = useAuth();
+  const locale = company?.locale || "en-US";
   const color = shiftColor(shift);
   const employee = shift.expand?.employee;
   const content = (
@@ -56,7 +59,7 @@ export function ShiftRow({
               {shift.expand.location.name}
             </span>
           )}
-          {showDate && <span>{toDate(shift.starts_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: tz })}</span>}
+          {showDate && <span>{toDate(shift.starts_at).toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric", timeZone: tz })}</span>}
           <span className="text-muted/70">{durationLabel(shift.starts_at, shift.ends_at)}</span>
         </div>
       </div>

@@ -21,6 +21,7 @@ export interface Company extends BaseRecord {
   legal_name?: string;
   timezone: string;
   currency: string;
+  locale?: string;
   week_start: string;
   pay_frequency: "weekly" | "biweekly" | "semimonthly" | "monthly";
   overtime_weekly_hours: number;

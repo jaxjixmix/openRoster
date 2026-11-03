@@ -19,7 +19,7 @@ OpenRoster borrows the *ideas* — Staffjoy's company/location/team/worker model
 OpenRoster is a **working alpha**. Current release: **v0.2.0-alpha**. The delivery backlog is public:
 
 - [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
-- [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — shipped: pay periods, PTO ledger, local clock day, geofence, punch corrections, currency and CSV. Remaining: PDF stubs, locale calendar, breaks/kiosk PIN.
+- [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — shipped: pay periods, PTO ledger, printable pay stubs, locale-aware money/dates, local clock day, geofence, punch corrections, currency and CSV. Remaining: break punches/rounding, kiosk PIN, DST tests.
 - [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service profile/availability and open-shift claiming. Remaining: notifications, copy week, labor budget, certifications, swaps.
 - [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs and CSV. Remaining: monitoring, type generation, i18n/PWA, accessibility pass.
 - [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
@@ -193,8 +193,8 @@ OpenRoster is a complete workflow, not a compliance product.
 - **No break punches or rounding rules.** Documented as not implemented for this alpha.
 - **No kiosk PIN / device lock.**
 - **No automated email/SMS.** In-app notifications are also not implemented yet.
-- **No PDF pay stubs.** CSV export is available; use browser print or a provider for PDFs.
-- **No break/locale/i18n configuration.** Currency is wired through; date formatting is still US-English.
+- **No payroll tax engine or payment provider.** Pay stubs are printable, not filed.
+- **No break punches/rounding or translation/i18n.** Locale controls currency/date formatting; UI copy is English.
 - **Tests are not a full regression suite.** CI covers payroll math, dates, API, setup and browser smoke; deep scheduling/compliance scenarios are still thin.
 
 ## Project layout

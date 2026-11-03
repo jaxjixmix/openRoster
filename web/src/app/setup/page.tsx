@@ -22,6 +22,7 @@ export default function SetupPage() {
     company_name: "",
     timezone: "America/Los_Angeles",
     currency: "USD",
+    locale: "en-US",
     week_start: "1",
     admin_name: "",
     admin_email: "",
@@ -183,6 +184,14 @@ export default function SetupPage() {
               <div>
                 <Label>Currency</Label>
                 <Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} maxLength={3} />
+              </div>
+              <div>
+                <Label>Locale</Label>
+                <Select value={form.locale} onChange={(e) => setForm({ ...form, locale: e.target.value })}>
+                  {["en-US", "en-GB", "en-AU", "fr-FR", "de-DE", "es-ES", "pt-BR"].map((locale) => (
+                    <option key={locale} value={locale}>{locale}</option>
+                  ))}
+                </Select>
               </div>
               <div>
                 <Label>Week starts</Label>

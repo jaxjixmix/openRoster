@@ -195,7 +195,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               withholding, filings or direct deposit. Do not use it to pay real people yet.
             </p>
           </div>
-          <CurrencyProvider currency={company?.currency || "USD"}>
+          <CurrencyProvider currency={company?.currency || "USD"} locale={company?.locale || "en-US"}>
             {children}
           </CurrencyProvider>
         </main>

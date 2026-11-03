@@ -57,6 +57,7 @@ function greeting(tz: string): string {
 export default function TodayPage() {
   const { user, employee, company, isManager } = useAuth();
   const tz = company?.timezone || "America/Los_Angeles";
+  const locale = company?.locale || "en-US";
   const today = todayIn(tz);
   const weekStartsOn = Number(company?.week_start ?? "1");
   const start = weekStart(today, weekStartsOn);
@@ -159,7 +160,7 @@ export default function TodayPage() {
       ? "today"
       : nextDate === addDaysStr(today, 1)
         ? "tomorrow"
-        : `on ${toDate(next.starts_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: tz })}`;
+        : `on ${toDate(next.starts_at).toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric", timeZone: tz })}`;
 
   if (loading) return <Spinner label="Loading today…" />;
   if (error) {
@@ -414,8 +415,8 @@ export default function TodayPage() {
                     <div>
                       <p className="text-xs font-medium">{titleCase(r.type)}</p>
                       <p className="text-[10px] text-muted">
-                        {toDate(r.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
-                        {r.start_date.slice(0, 10) !== r.end_date.slice(0, 10) && ` – ${toDate(r.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`}
+                        {toDate(r.start_date).toLocaleDateString(locale, { month: "short", day: "numeric", timeZone: "UTC" })}
+                        {r.start_date.slice(0, 10) !== r.end_date.slice(0, 10) && ` – ${toDate(r.end_date).toLocaleDateString(locale, { month: "short", day: "numeric", timeZone: "UTC" })}`}
                       </p>
                     </div>
                     <Badge tone={r.status === "approved" ? "success" : r.status === "denied" ? "danger" : "warning"}>
@@ -442,7 +443,7 @@ export default function TodayPage() {
                   <div>
                     <p className="text-sm font-semibold">{next.expand?.position?.name || "Shift"}</p>
                     <p className="mt-0.5 text-xs text-muted">
-                      {toDate(next.starts_at).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: tz })}
+                      {toDate(next.starts_at).toLocaleDateString(locale, { weekday: "long", month: "short", day: "numeric", timeZone: tz })}
                     </p>
                     <p className="mt-1 text-xs text-muted">
                       {formatTime(next.starts_at, tz)} – {formatTime(next.ends_at, tz)} · {next.expand?.location?.name}
