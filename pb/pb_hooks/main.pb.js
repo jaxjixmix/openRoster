@@ -972,6 +972,21 @@ routerAdd("POST", "/api/openroster/punches/correct", (e) => {
   return e.json(200, { punch: saved })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ client error reporting
+routerAdd("POST", "/api/openroster/client-error", (e) => {
+  const body = e.requestInfo().body || {}
+  const message = String(body.message || "").slice(0, 1000)
+  if (!message) return e.json(400, { message: "message is required" })
+  const payload = {
+    message: message,
+    path: String(body.path || "").slice(0, 300),
+    stack: String(body.stack || "").slice(0, 4000),
+    userAgent: String(body.userAgent || "").slice(0, 300),
+  }
+  console.error("CLIENT_ERROR " + JSON.stringify(payload))
+  return e.json(200, { ok: true })
+})
+
 // ------------------------------------------------------------------ expiry reminders
 routerAdd("POST", "/api/openroster/reminders/run", (e) => {
   const h = require(`${__hooks}/lib.js`)

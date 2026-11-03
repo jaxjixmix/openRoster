@@ -441,6 +441,13 @@ async function main() {
     assert.ok(employeeBlackouts.data.items.length > 0, "employees can see blackouts");
     console.log("PASS blackout dates");
 
+    const clientError = await request("/api/openroster/client-error", {
+      method: "POST",
+      body: { message: "API test client error", path: "/test", stack: "test" },
+    });
+    assert.equal(clientError.status, 200, "client error endpoint accepts reports");
+    console.log("PASS client error reporting");
+
     const ptoEntries = await request("/api/collections/pto_entries/records?perPage=100", { token });
     assert.ok(ptoEntries.data.items.length > 0, "ledger seeded");
     const pendingLeave = await request("/api/collections/time_off_requests/records?perPage=10&filter=" + encodeURIComponent("status = 'pending'"), { token });
