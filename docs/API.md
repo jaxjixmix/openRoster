@@ -12,6 +12,7 @@ All routes except `status` and `setup` require `Authorization: <PocketBase auth 
 | POST | `/api/openroster/clock` | auth | Punch with `{type: in|out|break_start|break_end, offset_minutes?, lat?, lng?}` |
 | POST | `/api/openroster/punches/correct` | manager | Correct a punch with `{punch, punched_at, type, reason}` |
 | POST | `/api/openroster/schedule/auto` | manager | Auto-fill `{week_start, location?, offsets}` |
+| POST | `/api/openroster/schedule/copy` | manager | Copy `{from_week, to_week, from_offsets, to_offsets}` into an empty week |
 | POST | `/api/openroster/shifts/claim` | staff | Claim an open published shift `{shift}` |
 | POST | `/api/openroster/timesheets/generate` | manager | Roll up `{period_start, period_end}` |
 | POST | `/api/openroster/timesheets/approve` | manager | Bulk approve `{ids}` |

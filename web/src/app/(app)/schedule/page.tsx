@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CalendarRange,
   ChevronLeft,
+  Copy,
   ChevronRight,
   Download,
   LayoutGrid,
@@ -42,7 +43,7 @@ import {
   toDate,
 } from "@/lib/dates";
 import { fullName, hours } from "@/lib/format";
-import { Avatar, Badge, Button, PageHeader, Select, Spinner } from "@/components/ui";
+import { Avatar, Badge, Button, Input, Label, Modal, PageHeader, Select, Spinner } from "@/components/ui";
 import { ShiftModal } from "@/components/shift-modal";
 import { ShiftRow, shiftColor } from "@/components/shift-row";
 import { useToast } from "@/lib/toast";
@@ -110,6 +111,8 @@ export default function SchedulePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<Shift | null>(null);
   const [defaultDate, setDefaultDate] = useState(today);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyTarget, setCopyTarget] = useState(addDaysStr(start, 7));
 
   const load = useCallback(async () => {
     if (!company) return;
@@ -226,6 +229,30 @@ export default function SchedulePage() {
     }
   }
 
+  async function copyWeek() {
+    if (!isManager) return
+    const target = weekStart(copyTarget, Number(company?.week_start ?? "1"))
+    setBusy(true)
+    try {
+      const result = await pb.send<{ created: number; to_week: string }>("/api/openroster/schedule/copy", {
+        method: "POST",
+        body: {
+          from_week: start,
+          to_week: target,
+          from_offsets: tzOffsets(start, tz),
+          to_offsets: tzOffsets(target, tz),
+        },
+      })
+      setCopyOpen(false)
+      setAnchor(target)
+      toast(`Copied ${result.created} shifts into ${monthDay(target)}. New shifts are drafts.`)
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function claimShift() {
     if (!selected) return
     try {
@@ -265,6 +292,13 @@ export default function SchedulePage() {
               <Button variant="outline" size="sm" onClick={autoFill} loading={busy}>
                 {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
                 Auto-fill
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setCopyTarget(addDaysStr(start, 7)); setCopyOpen(true); }}
+              >
+                <Copy className="size-3.5" /> Copy week
               </Button>
               <Button
                 variant="outline"
@@ -574,6 +608,20 @@ export default function SchedulePage() {
           </span>
         ))}
       </div>
+
+      <Modal
+        open={copyOpen}
+        onClose={() => setCopyOpen(false)}
+        title="Copy week"
+        description={`Copy ${monthDay(start)} – ${monthDay(addDaysStr(start, 6))} into an empty week. New shifts are drafts.`}
+        footer={<><Button variant="ghost" onClick={() => setCopyOpen(false)}>Cancel</Button><Button onClick={copyWeek} loading={busy}>Copy week</Button></>}
+      >
+        <div>
+          <Label>Target week (pick any day)</Label>
+          <Input type="date" value={copyTarget} onChange={(e) => setCopyTarget(e.target.value)} />
+          <p className="mt-2 text-[11px] text-muted">The target week must have no shifts. The copied shifts are drafts so you can review them first.</p>
+        </div>
+      </Modal>
 
       <ShiftModal
         open={modalOpen}

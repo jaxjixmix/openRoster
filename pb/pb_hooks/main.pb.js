@@ -398,6 +398,74 @@ routerAdd("POST", "/api/openroster/timesheets/generate", (e) => {
   return e.json(200, { sheets: sheets, period_start: startDate, period_end: endDate })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ copy a week
+routerAdd("POST", "/api/openroster/schedule/copy", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  if (!body.from_week || !body.to_week) return h.bad(e, "from_week and to_week are required.")
+  const company = h.companyOf(e.app, e.auth)
+  if (!company) return h.bad(e, "Company not configured.", 404)
+
+  const weekStartsOn = parseInt(company.getString("week_start") || "1", 10)
+  const fromStart = h.weekStartDate(body.from_week, weekStartsOn)
+  const toStart = h.weekStartDate(body.to_week, weekStartsOn)
+  if (fromStart === toStart) return h.bad(e, "Source and target weeks are the same.")
+  const dayDiff = Math.round((Date.parse(toStart + "T00:00:00Z") - Date.parse(fromStart + "T00:00:00Z")) / 86400000)
+  const fromEnd = h.addDays(fromStart, 7)
+  const toEnd = h.addDays(toStart, 7)
+
+  const existing = e.app.findRecordsByFilter(
+    "shifts",
+    "company = {:company} && starts_at >= {:start} && starts_at < {:end}",
+    "",
+    1,
+    0,
+    { company: company.id, start: toStart + " 00:00:00.000Z", end: toEnd + " 00:00:00.000Z" }
+  )
+  if (existing.length) return h.bad(e, "The target week already has shifts. Choose an empty week.", 409)
+
+  const shifts = e.app.findRecordsByFilter(
+    "shifts",
+    "company = {:company} && starts_at >= {:start} && starts_at < {:end}",
+    "starts_at",
+    1000,
+    0,
+    { company: company.id, start: fromStart + " 00:00:00.000Z", end: fromEnd + " 00:00:00.000Z" }
+  )
+  const fromOffsets = Array.isArray(body.from_offsets) ? body.from_offsets : []
+  const toOffsets = Array.isArray(body.to_offsets) ? body.to_offsets : []
+  const fromMs = Date.parse(fromStart + "T00:00:00Z")
+  let created = 0
+
+  e.app.runInTransaction((txApp) => {
+    shifts.forEach((shift) => {
+      const index = Math.floor((h.toMs(shift.getString("starts_at")) - fromMs) / 86400000)
+      const offsetDelta = (Number(toOffsets[index] || 0) - Number(fromOffsets[index] || 0)) * 60000
+      const copy = new Record(txApp.findCollectionByNameOrId("shifts"))
+      copy.set("company", company.id)
+      copy.set("location", shift.getString("location"))
+      copy.set("department", shift.getString("department"))
+      copy.set("position", shift.getString("position"))
+      copy.set("employee", shift.getString("employee"))
+      copy.set("starts_at", new Date(h.toMs(shift.getString("starts_at")) + dayDiff * 86400000 + offsetDelta).toISOString())
+      copy.set("ends_at", new Date(h.toMs(shift.getString("ends_at")) + dayDiff * 86400000 + offsetDelta).toISOString())
+      copy.set("local_date", h.addDays(h.isoDate(shift.getString("local_date") || shift.getString("starts_at")), dayDiff) + " 00:00:00.000Z")
+      copy.set("local_start", shift.getString("local_start"))
+      copy.set("local_end", shift.getString("local_end"))
+      copy.set("break_minutes", shift.getFloat("break_minutes"))
+      copy.set("status", "draft")
+      copy.set("source", "manual")
+      copy.set("notes", shift.getString("notes"))
+      copy.set("created_by", e.auth.id)
+      txApp.save(copy)
+      created++
+    })
+  })
+
+  return e.json(200, { created: created, from_week: fromStart, to_week: toStart })
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ claim an open shift
 routerAdd("POST", "/api/openroster/shifts/claim", (e) => {
   const h = require(`${__hooks}/lib.js`)

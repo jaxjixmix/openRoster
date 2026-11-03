@@ -194,6 +194,22 @@ async function main() {
     assert.ok(notifications.data.items.some((notification) => notification.title === "Shift claimed"), "claim creates notification");
     console.log("PASS in-app notification");
 
+    const copyTarget = new Date(new Date(weekStart + "T00:00:00Z").getTime() + 28 * 86400000).toISOString().slice(0, 10);
+    const copied = await request("/api/openroster/schedule/copy", {
+      method: "POST",
+      token,
+      body: { from_week: weekStart, to_week: copyTarget, from_offsets: offsets, to_offsets: offsets },
+    });
+    assert.equal(copied.status, 200, "copy week");
+    assert.ok(copied.data.created > 0);
+    const copiedAgain = await request("/api/openroster/schedule/copy", {
+      method: "POST",
+      token,
+      body: { from_week: weekStart, to_week: copyTarget, from_offsets: offsets, to_offsets: offsets },
+    });
+    assert.equal(copiedAgain.status, 409, "copy into non-empty week is blocked");
+    console.log("PASS copy week");
+
     const auto = await request("/api/openroster/schedule/auto", {
       method: "POST",
       token,
