@@ -52,7 +52,7 @@ async function main() {
   pb.stderr.on("data", (chunk) => { log += chunk; });
   await waitFor(`${PB_URL}/api/health`);
 
-  web = spawn("npm", ["start", "--", "-p", String(WEB_PORT)], {
+  web = spawn(process.execPath, [path.join(WEB, "node_modules/next/dist/bin/next"), "start", "-p", String(WEB_PORT)], {
     cwd: WEB,
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, NEXT_PUBLIC_PB_URL: PB_URL, NEXT_TELEMETRY_DISABLED: "1" },
@@ -104,6 +104,7 @@ main()
   .finally(async () => {
     if (web) web.kill("SIGTERM");
     if (pb) pb.kill("SIGTERM");
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     fs.rmSync(DATA, { recursive: true, force: true });
+    process.exit(process.exitCode || 0);
   });
