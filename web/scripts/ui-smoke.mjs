@@ -100,7 +100,8 @@ async function main() {
     await page.goto(`${WEB_URL}/schedule`, { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     assert.equal(await page.locator("h1").first().innerText(), "Schedule");
-    console.log("PASS schedule");
+    assert.match(await page.locator("main").innerText(), /Scheduled labor budget/);
+    console.log("PASS schedule and labor budget");
 
     await page.getByRole("button", { name: /Add shift/ }).first().click();
     await page.getByRole("dialog").waitFor();

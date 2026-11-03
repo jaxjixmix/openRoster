@@ -47,6 +47,7 @@ import { fullName, hours } from "@/lib/format";
 import { Avatar, Badge, Button, Input, Label, Modal, PageHeader, Select, Spinner } from "@/components/ui";
 import { ShiftModal } from "@/components/shift-modal";
 import { ShiftRow, shiftColor } from "@/components/shift-row";
+import { useMoney } from "@/lib/currency";
 import { useToast } from "@/lib/toast";
 import { downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/cn";
@@ -93,6 +94,7 @@ function layoutDay(shifts: Shift[], tz: string): Positioned[] {
 export default function SchedulePage() {
   const { company, employee, isManager } = useAuth();
   const toast = useToast();
+  const money = useMoney();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);
   const [anchor, setAnchor] = useState(today);
@@ -176,6 +178,10 @@ export default function SchedulePage() {
     .reduce((sum, s) => sum + durationHours(s.starts_at, s.ends_at) - (s.break_minutes || 0) / 60, 0);
   const openCount = visibleShifts.filter((s) => !s.employee).length;
   const draftCount = visibleShifts.filter((s) => s.status === "draft").length;
+  const scheduledCost = visibleShifts
+    .filter((s) => s.employee && s.expand?.employee?.pay_type !== "salary")
+    .reduce((sum, s) => sum + (durationHours(s.starts_at, s.ends_at) - (s.break_minutes || 0) / 60) * (s.expand?.employee?.pay_rate || 0), 0);
+  const laborBudget = company?.weekly_labor_budget || 0;
   const byDay = useMemo(
     () =>
       days.map((day) => ({
@@ -503,6 +509,28 @@ export default function SchedulePage() {
           );
         })}
       </div>
+
+      {laborBudget > 0 && (
+        <div className={`mb-4 rounded-xl border px-4 py-3 ${scheduledCost > laborBudget ? "border-[#eccac4] bg-[#f9eeec]" : "border-line bg-surface"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold">Scheduled labor budget</p>
+              <p className="mt-0.5 text-[11px] text-muted">
+                {money(scheduledCost)} of {money(laborBudget)} · {Math.round((scheduledCost / laborBudget) * 100)}%
+              </p>
+            </div>
+            <span className={`text-xs font-semibold ${scheduledCost > laborBudget ? "text-danger" : "text-sage"}`}>
+              {scheduledCost > laborBudget ? `Over by ${money(scheduledCost - laborBudget)}` : `${money(laborBudget - scheduledCost)} left`}
+            </span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#eeeae0]">
+            <div
+              className={`h-full rounded-full ${scheduledCost > laborBudget ? "bg-danger" : "bg-sage"}`}
+              style={{ width: `${Math.min(100, (scheduledCost / laborBudget) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className={cn("hidden overflow-hidden rounded-2xl border border-line bg-surface lg:block", view !== "timeline" && "lg:hidden")}>
         <div className="flex border-b border-line bg-[#f7f4ec]">

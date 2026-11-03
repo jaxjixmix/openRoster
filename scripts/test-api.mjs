@@ -106,6 +106,7 @@ async function main() {
     assert.equal(bootstrap.status, 200);
     assert.equal(bootstrap.data.is_manager, true);
     assert.ok(bootstrap.data.company.name);
+    assert.equal(bootstrap.data.company.weekly_labor_budget, 6000);
     console.log("PASS bootstrap");
 
     const today = new Intl.DateTimeFormat("en-CA", {
