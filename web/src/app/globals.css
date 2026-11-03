@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-paper: #f3f1ea;
+  --color-surface: #fbfaf6;
+  --color-raised: #ffffff;
+  --color-ink: #171712;
+  --color-muted: #6f6a5d;
+  --color-line: #e2ddd0;
+  --color-line-strong: #cec7b6;
+  --color-accent: #c4512c;
+  --color-accent-deep: #9a3b1f;
+  --color-sage: #3e6b56;
+  --color-gold: #a97b2f;
+  --color-danger: #b23b32;
+  --color-night: #14140f;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01" 1, "cv11" 1;
+}
+
+::selection {
+  background: #f0cdbd;
+  color: #171712;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3ccbb;
+  border-radius: 999px;
+  border: 3px solid var(--color-paper);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b8af9c;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+  .panel-raised {
+    @apply rounded-2xl border border-line bg-raised shadow-[0_1px_0_rgba(23,23,18,0.04),0_12px_30px_-24px_rgba(23,23,18,0.45)];
+  }
+  .eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-[0.16em] text-muted;
+  }
+  .label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.1em] text-muted;
+  }
+  .field {
+    @apply h-10 w-full rounded-lg border border-line bg-raised px-3 text-sm text-ink outline-none transition placeholder:text-muted/60 focus:border-ink focus:ring-2 focus:ring-ink/10;
+  }
+  .field-area {
+    @apply min-h-24 w-full rounded-lg border border-line bg-raised px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-muted/60 focus:border-ink focus:ring-2 focus:ring-ink/10;
+  }
+  .table-head {
+    @apply text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-muted;
+  }
+  .table-cell {
+    @apply border-t border-line px-4 py-3 text-sm;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .fade-in {
+    animation: fade-in 0.35s ease-out both;
+  }
+  .rise-in {
+    animation: rise-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

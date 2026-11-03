@@ -1,0 +1,278 @@
+export interface BaseRecord {
+  id: string;
+  collectionId: string;
+  collectionName: string;
+  created: string;
+  updated: string;
+  expand?: Record<string, unknown>;
+}
+
+export interface User extends BaseRecord {
+  email: string;
+  name: string;
+  role: "admin" | "manager" | "employee";
+  phone?: string;
+  avatar?: string;
+  verified?: boolean;
+}
+
+export interface Company extends BaseRecord {
+  name: string;
+  legal_name?: string;
+  timezone: string;
+  currency: string;
+  week_start: string;
+  pay_frequency: "weekly" | "biweekly" | "semimonthly" | "monthly";
+  overtime_weekly_hours: number;
+  overtime_daily_hours: number;
+  overtime_multiplier: number;
+  address?: string;
+  phone?: string;
+  logo?: string;
+  setup_complete?: boolean;
+}
+
+export interface Location extends BaseRecord {
+  company: string;
+  name: string;
+  address?: string;
+  timezone?: string;
+  lat?: number;
+  lng?: number;
+  geofence_meters?: number;
+  active?: boolean;
+}
+
+export interface Department extends BaseRecord {
+  company: string;
+  name: string;
+  color?: string;
+}
+
+export interface Position extends BaseRecord {
+  company: string;
+  department?: string;
+  name: string;
+  default_rate?: number;
+  active?: boolean;
+}
+
+export interface Employee extends BaseRecord {
+  user?: string;
+  company: string;
+  location?: string;
+  department?: string;
+  position?: string;
+  manager?: string;
+  employee_number?: string;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  phone?: string;
+  hire_date?: string;
+  termination_date?: string;
+  employment_type?: "full_time" | "part_time" | "contractor";
+  pay_type?: "hourly" | "salary";
+  pay_rate?: number;
+  overtime_exempt?: boolean;
+  max_weekly_hours?: number;
+  pto_balance_hours?: number;
+  status?: "active" | "inactive";
+  notes?: string;
+  expand?: {
+    user?: User;
+    location?: Location;
+    department?: Department;
+    position?: Position;
+    manager?: Employee;
+  };
+}
+
+export interface Shift extends BaseRecord {
+  company: string;
+  location?: string;
+  department?: string;
+  position?: string;
+  employee?: string;
+  starts_at: string;
+  ends_at: string;
+  break_minutes?: number;
+  status: "draft" | "published";
+  source?: "manual" | "auto" | "swap";
+  notes?: string;
+  created_by?: string;
+  expand?: {
+    employee?: Employee;
+    location?: Location;
+    department?: Department;
+    position?: Position;
+  };
+}
+
+export interface Punch extends BaseRecord {
+  employee: string;
+  location?: string;
+  type: "in" | "out";
+  punched_at: string;
+  source?: string;
+  lat?: number;
+  lng?: number;
+  note?: string;
+  expand?: { employee?: Employee; location?: Location };
+}
+
+export interface Availability extends BaseRecord {
+  employee: string;
+  weekday: string;
+  start_time: string;
+  end_time: string;
+  effective_from?: string;
+  effective_to?: string;
+  notes?: string;
+}
+
+export interface TimeOffRequest extends BaseRecord {
+  employee: string;
+  type: "vacation" | "sick" | "unpaid" | "other";
+  start_date: string;
+  end_date: string;
+  hours?: number;
+  status: "pending" | "approved" | "denied";
+  approved_by?: string;
+  note?: string;
+  expand?: { employee?: Employee };
+}
+
+export interface TimesheetEntry extends BaseRecord {
+  timesheet: string;
+  employee: string;
+  date: string;
+  shift?: string;
+  regular_hours?: number;
+  overtime_hours?: number;
+  pto_hours?: number;
+  note?: string;
+}
+
+export interface Timesheet extends BaseRecord {
+  employee: string;
+  period_start: string;
+  period_end: string;
+  regular_hours?: number;
+  overtime_hours?: number;
+  pto_hours?: number;
+  total_hours?: number;
+  status: "open" | "submitted" | "approved" | "paid";
+  approved_by?: string;
+  approved_at?: string;
+  notes?: string;
+  expand?: { employee?: Employee; approved_by?: User };
+}
+
+export interface PayRule extends BaseRecord {
+  company: string;
+  name: string;
+  type: string;
+  calc: "percent" | "fixed_per_hour" | "fixed_per_period";
+  rate: number;
+  applies_to?: string;
+  employer?: boolean;
+  active?: boolean;
+}
+
+export interface PayRun extends BaseRecord {
+  company: string;
+  period_start: string;
+  period_end: string;
+  pay_date?: string;
+  status: "draft" | "approved" | "paid";
+  total_gross?: number;
+  total_tax?: number;
+  total_deductions?: number;
+  total_net?: number;
+  notes?: string;
+  created_by?: string;
+}
+
+export interface PayStub extends BaseRecord {
+  pay_run: string;
+  employee: string;
+  regular_hours?: number;
+  overtime_hours?: number;
+  pto_hours?: number;
+  regular_pay?: number;
+  overtime_pay?: number;
+  pto_pay?: number;
+  gross_pay?: number;
+  employee_taxes?: number;
+  employee_deductions?: number;
+  employer_taxes?: number;
+  net_pay?: number;
+  breakdown?: PayLine[];
+  expand?: { employee?: Employee };
+}
+
+export interface PayLine {
+  name: string;
+  type: string;
+  calc: string;
+  rate: number;
+  amount: number;
+  employer: boolean;
+}
+
+export interface Holiday extends BaseRecord {
+  company: string;
+  name: string;
+  date: string;
+  paid?: boolean;
+}
+
+export interface DocumentRecord extends BaseRecord {
+  employee: string;
+  name: string;
+  type?: string;
+  file?: string;
+  expires_at?: string;
+  notes?: string;
+}
+
+export interface Bootstrap {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: "admin" | "manager" | "employee";
+    avatar?: string;
+  };
+  employee: Employee | null;
+  company: Company | null;
+  locations: Location[];
+  is_manager: boolean;
+}
+
+export interface PayrollPreview {
+  run: PayRun | null;
+  stubs: Array<{
+    employee: string;
+    regular_hours: number;
+    overtime_hours: number;
+    pto_hours: number;
+    regular_pay: number;
+    overtime_pay: number;
+    pto_pay: number;
+    gross_pay: number;
+    employee_taxes: number;
+    employee_deductions: number;
+    employer_taxes: number;
+    net_pay: number;
+    breakdown: PayLine[];
+  }>;
+  totals: {
+    employees: number;
+    gross: number;
+    taxes: number;
+    deductions: number;
+    net: number;
+  };
+}

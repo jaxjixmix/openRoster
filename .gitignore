@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+._*
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets / local config
+.env
+.env.*
+*.key
+*.pem
+
+# PocketBase runtime
+pb/pocketbase
+pb/pb_data/
+pb/.tmpdata/
+pb/pb_public/*
+!pb/pb_public/.gitkeep
+
+# Next.js
+web/.next/
+web/out/
+
+# Local demo screenshots / notes
+docs/*.tmp
