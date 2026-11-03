@@ -188,6 +188,12 @@ export interface PayRule extends BaseRecord {
   active?: boolean;
 }
 
+export interface KioskPin extends BaseRecord {
+  company: string;
+  pin: string;
+  enabled?: boolean;
+}
+
 export interface PayPeriod extends BaseRecord {
   company: string;
   period_start: string;

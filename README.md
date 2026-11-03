@@ -16,10 +16,10 @@ OpenRoster borrows the *ideas* — Staffjoy's company/location/team/worker model
 
 ## Status
 
-OpenRoster is a **working alpha**. Current release: **v0.2.0-alpha**. The delivery backlog is public:
+OpenRoster is a **working alpha**. Current release: **v0.3.0-alpha**. The delivery backlog is public:
 
 - [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
-- [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — shipped: pay periods, PTO ledger, printable pay stubs, locale-aware money/dates, local clock day, geofence, punch corrections, currency and CSV. Remaining: kiosk PIN, DST tests.
+- [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — complete: pay periods, PTO ledger, printable stubs, locale, pay-period clock, DST tests, breaks/rounding, geofence, punch corrections, kiosk PIN, currency/CSV.
 - [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service profile/availability and open-shift claiming. Remaining: notifications, copy week, labor budget, certifications, swaps.
 - [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs and CSV. Remaining: monitoring, type generation, i18n/PWA, accessibility pass.
 - [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
@@ -33,7 +33,7 @@ OpenRoster is a **working alpha**. Current release: **v0.2.0-alpha**. The delive
 - **Open shifts** — staff can see published open shifts and claim them; the server checks leave, availability and weekly hours.
 - **Schedule** — week board and hour-by-hour timeline, location filter, draft/publish, realtime updates, overlap validation, manual leave/hour-cap checks.
 - **Auto-fill** — assigns open shifts using availability, approved time off, existing shifts, weekly hour caps and position fit. It leaves genuinely uncovered shifts open instead of guessing.
-- **Time clock** — clock in/out, break start/end, optional rounding, kiosk mode, live “on the clock” list, duplicate-punch and backdating protection.
+- **Time clock** — clock in/out, break start/end, optional rounding, PIN-locked kiosk mode, live “on the clock” list, duplicate-punch and backdating protection.
 - **Timesheets** — generated from punches (scheduled hours are a fallback), daily and weekly overtime, PTO, approve individually or in bulk. Approved sheets are locked.
 - **Payroll** — preview and draft runs from approved timesheets, configurable percent/fixed rules, per-stub breakdown, pay history, draft → approved → paid → voided, no destructive deletes.
 - **People** — profiles, pay, availability, documents, PTO ledger, recent punches, archive/restore.
@@ -190,10 +190,11 @@ OpenRoster is a complete workflow, not a compliance product.
 - **SQLite / PocketBase scale.** Excellent for a few hundred staff and modest concurrency; not a distributed enterprise system.
 - **Geofence is best-effort.** When the browser shares coordinates, clock-in rejects a punch outside the location radius. If permission is denied, the punch is accepted.
 - **No shift swaps, recurring shifts, copy-week, labor budgets, certifications, or push notifications yet.**
-- **No kiosk PIN / device lock.**
+- **Kiosk PIN is a UI lock, not an authentication boundary.** Use a locked-down tablet and HTTPS.
 - **No automated email/SMS.** In-app notifications are also not implemented yet.
 - **No payroll tax engine or payment provider.** Pay stubs are printable, not filed.
-- **No break punches/rounding or translation/i18n.** Locale controls currency/date formatting; UI copy is English.
+- **No translation/i18n.** Locale controls currency/date formatting; UI copy is English. Break punches, rounding and a kiosk PIN are supported.
+- **Locations share the company timezone in this alpha.** Per-location timezones are stored but not used for scheduling.
 - **Tests are not a full regression suite.** CI covers payroll math, dates, API, setup and browser smoke; deep scheduling/compliance scenarios are still thin.
 
 ## Project layout
@@ -220,7 +221,9 @@ scripts/
   backup.sh             tar-based backup
   restore.sh            tested restore helper
 tests/
-  lib.test.cjs          payroll, overtime, dates and pay periods
+  lib.test.cjs          payroll, overtime, breaks, dates and pay periods
+web/tests/
+  tz.test.mjs           DST offset tests
 ```
 
 ## Attribution

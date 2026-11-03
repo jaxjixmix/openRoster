@@ -109,15 +109,7 @@ export function timeInTz(iso: string, tz: string): string {
   return formatInTimeZone(toDate(iso), tz, "HH:mm");
 }
 
-export function tzOffsetForDate(date: string, tz: string): number {
-  const utcMidnight = Date.parse(date + "T00:00:00Z");
-  const zonedMidnight = fromZonedTime(date + "T00:00:00", tz).getTime();
-  return Math.round((utcMidnight - zonedMidnight) / 60000);
-}
-
-export function tzOffsets(weekStartDate: string, tz: string): number[] {
-  return weekDates(weekStartDate).map((date) => tzOffsetForDate(date, tz));
-}
+export { tzOffsetForDate, tzOffsets } from "./tz";
 
 export function nextShift<T extends { starts_at: string; ends_at: string }>(
   shifts: T[],

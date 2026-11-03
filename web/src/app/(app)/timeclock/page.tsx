@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, Coffee, LogIn, LogOut, MapPin, Pencil, Users } from "lucide-react";
+import { Clock3, Coffee, Lock, LogIn, LogOut, MapPin, Pencil, Unlock, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { pb } from "@/lib/pb";
-import { errorMessage, getEmployees, getPunchesBetween, getShiftsBetween, getTimesheets } from "@/lib/data";
-import type { Employee, Punch, Shift, Timesheet } from "@/lib/types";
+import { errorMessage, getEmployees, getKioskPin, getPunchesBetween, getShiftsBetween, getTimesheets } from "@/lib/data";
+import type { Employee, KioskPin, Punch, Shift, Timesheet } from "@/lib/types";
 import {
   addDaysStr,
   dateInTz,
@@ -39,6 +39,10 @@ export default function TimeClockPage() {
   const [error, setError] = useState("");
   const [editingPunch, setEditingPunch] = useState<Punch | null>(null);
   const [punchForm, setPunchForm] = useState({ punched_at: "", type: "in", reason: "" });
+  const [kiosk, setKiosk] = useState<KioskPin | null>(null);
+  const [kioskUnlocked, setKioskUnlocked] = useState(!isManager);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
 
   const load = useCallback(async () => {
     if (!company) return;
@@ -68,6 +72,39 @@ export default function TimeClockPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!company || !isManager) {
+      setKioskUnlocked(true);
+      return;
+    }
+    getKioskPin(company.id)
+      .then((record) => {
+        setKiosk(record);
+        const unlocked = !record?.pin || sessionStorage.getItem(`openroster_kiosk_${company.id}`) === "1";
+        setKioskUnlocked(unlocked);
+      })
+      .catch(() => setKioskUnlocked(true));
+  }, [company, isManager]);
+
+  function unlockKiosk() {
+    if (!company || !kiosk?.pin) return;
+    if (pinInput.trim() === kiosk.pin) {
+      sessionStorage.setItem(`openroster_kiosk_${company.id}`, "1");
+      setKioskUnlocked(true);
+      setPinError("");
+      setPinInput("");
+    } else {
+      setPinError("Incorrect PIN.");
+    }
+  }
+
+  function lockKiosk() {
+    if (company) sessionStorage.removeItem(`openroster_kiosk_${company.id}`);
+    setKioskUnlocked(false);
+    setSelected("");
+    setPinInput("");
+  }
 
   function openPunch(punch: Punch) {
     setEditingPunch(punch)
@@ -174,18 +211,48 @@ export default function TimeClockPage() {
                 </div>
                 <Users className="size-4 text-muted" />
               </div>
-              <Select
-                value={selected}
-                onChange={(e) => setSelected(e.target.value)}
-                className="mt-3"
-              >
-                <option value="">Choose a team member</option>
-                {employees.filter((e) => e.status === "active").map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {fullName(emp)} · {emp.expand?.position?.name || titleCase(emp.pay_type || "")}
-                  </option>
-                ))}
-              </Select>
+              {kiosk?.pin && !kioskUnlocked ? (
+                <div className="mt-3 space-y-2">
+                  <Label>Enter kiosk PIN</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="password"
+                      value={pinInput}
+                      onChange={(e) => { setPinInput(e.target.value); setPinError(""); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") unlockKiosk(); }}
+                      placeholder="••••"
+                      maxLength={12}
+                    />
+                    <Button onClick={unlockKiosk}><Unlock className="size-4" /> Unlock</Button>
+                  </div>
+                  {pinError && <p className="text-[11px] text-danger">{pinError}</p>}
+                </div>
+              ) : (
+                <>
+                  <Select
+                    value={selected}
+                    onChange={(e) => setSelected(e.target.value)}
+                    className="mt-3"
+                  >
+                    <option value="">Choose a team member</option>
+                    {employees.filter((e) => e.status === "active").map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {fullName(emp)} · {emp.expand?.position?.name || titleCase(emp.pay_type || "")}
+                      </option>
+                    ))}
+                  </Select>
+                  <div className="mt-2 flex items-center justify-between">
+                    <p className="text-[10px] text-muted">
+                      {kiosk?.pin ? "Kiosk unlocked for this session." : "No kiosk PIN configured. Set one in Settings."}
+                    </p>
+                    {kiosk?.pin && (
+                      <Button variant="ghost" size="sm" onClick={lockKiosk}>
+                        <Lock className="size-3.5" /> Lock
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

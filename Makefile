@@ -47,6 +47,7 @@ build:
 
 test:
 	node --test tests/*.test.cjs
+	cd web && node --test tests/tz.test.mjs
 
 test-api:
 	node scripts/test-api.mjs

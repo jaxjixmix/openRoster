@@ -4,6 +4,7 @@ import type {
   Employee,
   Holiday,
   Location,
+  KioskPin,
   PayPeriod,
   PayRule,
   PtoEntry,
@@ -144,6 +145,29 @@ export async function getAvailability(employeeId: string): Promise<Availability[
     filter: pb.filter("employee = {:employee}", { employee: employeeId }),
     sort: "weekday,start_time",
   });
+}
+
+export async function getKioskPin(companyId: string): Promise<KioskPin | null> {
+  try {
+    return await pb.collection("kiosk_pins").getFirstListItem<KioskPin>(
+      pb.filter("company = {:company}", { company: companyId }),
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function saveKioskPin(companyId: string, pin: string): Promise<void> {
+  const existing = await getKioskPin(companyId);
+  if (!pin.trim()) {
+    if (existing) await pb.collection("kiosk_pins").delete(existing.id);
+    return;
+  }
+  if (existing) {
+    await pb.collection("kiosk_pins").update(existing.id, { pin: pin.trim(), enabled: true });
+  } else {
+    await pb.collection("kiosk_pins").create({ company: companyId, pin: pin.trim(), enabled: true });
+  }
 }
 
 export async function getPayPeriods(): Promise<PayPeriod[]> {

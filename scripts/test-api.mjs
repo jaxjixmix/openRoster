@@ -253,6 +253,17 @@ async function main() {
     assert.equal(breakOut.status, 200, "clock out");
     console.log("PASS break punches");
 
+    await request("/api/collections/kiosk_pins/records", {
+      method: "POST",
+      token,
+      body: { company: bootstrap.data.company.id, pin: "2468", enabled: true },
+    });
+    const managerPins = await request("/api/collections/kiosk_pins/records?perPage=10", { token });
+    assert.equal(managerPins.data.items.length, 1, "manager can read kiosk PIN");
+    const samPins = await request("/api/collections/kiosk_pins/records?perPage=10", { token: samLogin.data.token });
+    assert.equal(samPins.data.items.length, 0, "employees cannot read kiosk PIN");
+    console.log("PASS kiosk PIN access");
+
     const ptoEntries = await request("/api/collections/pto_entries/records?perPage=100", { token });
     assert.ok(ptoEntries.data.items.length > 0, "ledger seeded");
     const pendingLeave = await request("/api/collections/time_off_requests/records?perPage=10&filter=" + encodeURIComponent("status = 'pending'"), { token });

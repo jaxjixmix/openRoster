@@ -43,7 +43,7 @@ jobs:
           NEXT_TELEMETRY_DISABLED: 1
 
       - name: Unit tests
-        run: node --test tests/*.test.cjs
+        run: make test
 
       - name: API and setup tests
         run: make test-api

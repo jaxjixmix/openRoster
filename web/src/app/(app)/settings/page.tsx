@@ -21,9 +21,11 @@ import {
   errorMessage,
   getDepartments,
   getHolidays,
+  getKioskPin,
   getLocations,
   getPayRules,
   getPositions,
+  saveKioskPin,
 } from "@/lib/data";
 import type { Department, Holiday, Location, PayRule, Position, User } from "@/lib/types";
 import { formatDate, toDate } from "@/lib/dates";
@@ -78,6 +80,8 @@ export default function SettingsPage() {
     phone: "",
   });
   const [saving, setSaving] = useState(false);
+  const [kioskPin, setKioskPin] = useState("");
+  const [kioskSaving, setKioskSaving] = useState(false);
 
   const [locationModal, setLocationModal] = useState<Location | "new" | null>(null);
   const [departmentModal, setDepartmentModal] = useState<Department | "new" | null>(null);
@@ -124,6 +128,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!company) return;
+    getKioskPin(company.id).then((record) => setKioskPin(record?.pin || "")).catch(() => {});
     setCompanyForm({
       name: company.name || "",
       legal_name: company.legal_name || "",
@@ -162,6 +167,19 @@ export default function SettingsPage() {
       toast(errorMessage(err), "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveKiosk() {
+    if (!company) return;
+    setKioskSaving(true);
+    try {
+      await saveKioskPin(company.id, kioskPin);
+      toast(kioskPin.trim() ? "Kiosk PIN saved." : "Kiosk PIN removed.", "info");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    } finally {
+      setKioskSaving(false);
     }
   }
 
@@ -303,6 +321,25 @@ export default function SettingsPage() {
                   Payroll uses these rules plus the rates in Pay rules. It does not file taxes or connect to a payment provider.
                 </div>
                 {isAdmin && <Button variant="outline" onClick={saveCompany} loading={saving}>Save payroll defaults</Button>}
+              </div>
+            </section>
+
+            <section className="panel-raised p-5 xl:col-span-2">
+              <div className="mb-4 flex items-center gap-2">
+                <ShieldCheck className="size-4 text-muted" />
+                <p className="text-sm font-semibold">Kiosk mode</p>
+              </div>
+              <p className="text-xs text-muted">
+                A PIN unlocks the shared time-clock tablet. It is a UI lock, not a security boundary; use a locked-down device and HTTPS.
+              </p>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="w-full max-w-xs">
+                  <Label>Kiosk PIN</Label>
+                  <Input value={kioskPin} onChange={(e) => setKioskPin(e.target.value)} placeholder="4–12 characters" maxLength={12} />
+                </div>
+                <Button variant="outline" onClick={saveKiosk} loading={kioskSaving}>
+                  {kioskPin.trim() ? "Save PIN" : "Remove PIN"}
+                </Button>
               </div>
             </section>
           </div>
