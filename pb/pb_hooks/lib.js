@@ -69,11 +69,56 @@ function overlaps(startA, endA, startB, endB) {
   return startA < endB && endA > startB
 }
 
+function shiftDate(record) {
+  const local = record.getString("local_date")
+  return local ? String(local).slice(0, 10) : String(record.getString("starts_at")).slice(0, 10)
+}
+
+function weekStartDate(dateStr, weekStartsOn) {
+  const d = new Date(dateStr + "T00:00:00Z")
+  const day = d.getUTCDay()
+  const diff = (day - (weekStartsOn || 0) + 7) % 7
+  return new Date(d.getTime() - diff * MS_DAY).toISOString().slice(0, 10)
+}
+
 function weekKey(dateStr) {
   const d = new Date(dateStr + "T00:00:00Z")
   const day = d.getUTCDay()
   const diff = (day + 6) % 7
   return new Date(d.getTime() - diff * MS_DAY).toISOString().slice(0, 10)
+}
+
+function computeTimesheetHours(byDayMinutes, dailyLimit, weeklyLimit) {
+  const daily = {}
+  Object.keys(byDayMinutes).sort().forEach((day) => {
+    const hours = round2(byDayMinutes[day] / 60)
+    const overtime = dailyLimit > 0 ? round2(Math.max(0, hours - dailyLimit)) : 0
+    daily[day] = { regular: round2(hours - overtime), overtime: overtime }
+  })
+
+  const weekTotals = {}
+  Object.keys(daily).forEach((day) => {
+    const week = weekKey(day)
+    weekTotals[week] = round2((weekTotals[week] || 0) + daily[day].regular)
+  })
+  Object.keys(daily).forEach((day) => {
+    const week = weekKey(day)
+    if (weekTotals[week] > weeklyLimit) {
+      const excess = round2(weekTotals[week] - weeklyLimit)
+      const take = Math.min(excess, daily[day].regular)
+      daily[day].regular = round2(daily[day].regular - take)
+      daily[day].overtime = round2(daily[day].overtime + take)
+      weekTotals[week] = round2(weekTotals[week] - take)
+    }
+  })
+
+  let regular = 0
+  let overtime = 0
+  Object.keys(daily).forEach((day) => {
+    regular += daily[day].regular
+    overtime += daily[day].overtime
+  })
+  return { daily: daily, regular: round2(regular), overtime: round2(overtime) }
 }
 
 function workedMinutesByDay(app, employeeId, startDate, endDate) {
@@ -177,6 +222,36 @@ function buildStub(company, employee, hours, rules, periodDays) {
   }
 }
 
+function shiftAssignmentError(app, record, employeeId, ignoreId) {
+  const employee = app.findRecordById("employees", employeeId)
+  const company = app.findRecordById("companies", employee.getString("company"))
+  const date = shiftDate(record)
+
+  const leave = approvedTimeOff(app, employeeId, date, date)
+  if (leave.length > 0) return "This employee has approved time off on that day."
+
+  const weekStartsOn = parseInt(company.getString("week_start") || "1", 10)
+  const start = weekStartDate(date, weekStartsOn)
+  const end = addDays(start, 6)
+  const rows = app.findRecordsByFilter(
+    "shifts",
+    "employee = {:employee} && id != {:id} && local_date >= {:start} && local_date <= {:end}",
+    "starts_at",
+    500,
+    0,
+    { employee: employeeId, id: ignoreId || "", start: start + " 00:00:00.000Z", end: end + " 00:00:00.000Z" }
+  )
+  let scheduled = 0
+  rows.forEach((row) => {
+    scheduled += Math.max(0, (toMs(row.getString("ends_at")) - toMs(row.getString("starts_at"))) / 3600000 - (row.getFloat("break_minutes") || 0) / 60)
+  })
+  const shiftHours = Math.max(0, (toMs(record.getString("ends_at")) - toMs(record.getString("starts_at"))) / 3600000 - (record.getFloat("break_minutes") || 0) / 60)
+  const maxHours = employee.getFloat("max_weekly_hours") || 40
+  if (scheduled + shiftHours > maxHours) return "This shift would exceed the employee's weekly hour cap (" + maxHours + "h)."
+
+  return null
+}
+
 function payrollPayload(app, auth, body, commit) {
   const startDate = body.period_start
   const endDate = body.period_end
@@ -238,37 +313,50 @@ function payrollPayload(app, auth, body, commit) {
 
   let run = null
   if (commit) {
+    let existing = null
     try {
-      run = app.findFirstRecordByFilter(
+      existing = app.findFirstRecordByFilter(
         "pay_runs",
-        "company = {:company} && period_start = {:start}",
+        "company = {:company} && period_start = {:start} && status != 'voided'",
         { company: company.id, start: startDate + " 00:00:00.000Z" }
       )
-      if (run.getString("status") !== "draft") return { error: "This period is already " + run.getString("status") + "." }
+      if (existing.getString("status") !== "draft") {
+        return { error: "This period is already " + existing.getString("status") + "." }
+      }
     } catch (err) {
-      run = new Record(app.findCollectionByNameOrId("pay_runs"))
-      run.set("company", company.id)
-      run.set("period_start", startDate + " 00:00:00.000Z")
-      run.set("period_end", endDate + " 00:00:00.000Z")
-      run.set("status", "draft")
+      existing = null
     }
-    if (body.pay_date) run.set("pay_date", body.pay_date + " 00:00:00.000Z")
-    if (body.notes) run.set("notes", body.notes)
-    run.set("total_gross", totalGross)
-    run.set("total_tax", totalTax)
-    run.set("total_deductions", totalDeductions)
-    run.set("total_net", totalNet)
-    run.set("created_by", auth.id)
-    app.save(run)
 
-    const oldStubs = app.findRecordsByFilter("pay_stubs", "pay_run = {:run}", "", 1000, 0, { run: run.id })
-    oldStubs.forEach((stub) => app.delete(stub))
+    app.runInTransaction((txApp) => {
+      let runRecord
+      if (existing) {
+        runRecord = txApp.findRecordById("pay_runs", existing.id)
+      } else {
+        runRecord = new Record(txApp.findCollectionByNameOrId("pay_runs"))
+        runRecord.set("company", company.id)
+        runRecord.set("period_start", startDate + " 00:00:00.000Z")
+        runRecord.set("period_end", endDate + " 00:00:00.000Z")
+        runRecord.set("status", "draft")
+      }
+      if (body.pay_date) runRecord.set("pay_date", body.pay_date + " 00:00:00.000Z")
+      if (body.notes) runRecord.set("notes", body.notes)
+      runRecord.set("total_gross", totalGross)
+      runRecord.set("total_tax", totalTax)
+      runRecord.set("total_deductions", totalDeductions)
+      runRecord.set("total_net", totalNet)
+      runRecord.set("created_by", auth.id)
+      txApp.save(runRecord)
 
-    stubs.forEach((data) => {
-      const stub = new Record(app.findCollectionByNameOrId("pay_stubs"))
-      stub.set("pay_run", run.id)
-      Object.keys(data).forEach((key) => stub.set(key, data[key]))
-      app.save(stub)
+      const oldStubs = txApp.findRecordsByFilter("pay_stubs", "pay_run = {:run}", "", 1000, 0, { run: runRecord.id })
+      oldStubs.forEach((stub) => txApp.delete(stub))
+
+      stubs.forEach((data) => {
+        const stub = new Record(txApp.findCollectionByNameOrId("pay_stubs"))
+        stub.set("pay_run", runRecord.id)
+        Object.keys(data).forEach((key) => stub.set(key, data[key]))
+        txApp.save(stub)
+      })
+      run = runRecord
     })
   }
 
@@ -285,7 +373,19 @@ function payrollPayload(app, auth, body, commit) {
   }
 }
 
-function audit(app, auth, collection, recordId, action, summary) {
+function snapshot(record, keys) {
+  if (!record) return null
+  const out = {}
+  keys.forEach((key) => { out[key] = record.get(key) })
+  return out
+}
+
+function sameFields(a, b, keys) {
+  if (!a || !b) return false
+  return keys.every((key) => JSON.stringify(a.get(key)) === JSON.stringify(b.get(key)))
+}
+
+function audit(app, auth, collection, recordId, action, summary, before, after) {
   if (!auth) return
   try {
     if (collection === "audit_log") return
@@ -296,6 +396,8 @@ function audit(app, auth, collection, recordId, action, summary) {
     log.set("collection", collection)
     log.set("record_id", recordId || "")
     log.set("summary", summary || (action + " " + collection))
+    if (before) log.set("before", before)
+    if (after) log.set("after", after)
     log.set("at", new Date().toISOString())
     app.save(log)
   } catch (err) {
@@ -316,9 +418,15 @@ module.exports = {
   companyOf: companyOf,
   approvedTimeOff: approvedTimeOff,
   overlaps: overlaps,
+  shiftDate: shiftDate,
+  shiftAssignmentError: shiftAssignmentError,
+  weekStartDate: weekStartDate,
   weekKey: weekKey,
+  computeTimesheetHours: computeTimesheetHours,
   workedMinutesByDay: workedMinutesByDay,
   buildStub: buildStub,
+  snapshot: snapshot,
+  sameFields: sameFields,
   payrollPayload: payrollPayload,
   audit: audit,
 }

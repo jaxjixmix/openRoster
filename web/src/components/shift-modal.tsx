@@ -110,6 +110,7 @@ export function ShiftModal({
         department: department || undefined,
         position: position || undefined,
         employee: employee || "",
+        local_date: `${date} 00:00:00.000Z`,
         starts_at: starts,
         ends_at: ends,
         break_minutes: Number(breakMinutes) || 0,

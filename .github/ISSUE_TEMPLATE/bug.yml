@@ -1,0 +1,51 @@
+name: Bug report
+description: Something is broken in OpenRoster
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OpenRoster is alpha software. Do not use real payroll data in a reproduction.
+        For security issues, use https://github.com/jaxjixmix/openRoster/security/advisories/new instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the page or API route and the result.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: The tag or commit SHA you are running.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Scheduling
+        - Time clock
+        - Timesheets
+        - Payroll
+        - People / PTO
+        - Setup / auth
+        - Settings
+        - Deployment / Docker
+        - Other

@@ -255,6 +255,7 @@ export function PersonModal({ open, onClose, employee, locations, departments, p
             <Select value={form.status} onChange={(e) => update("status", e.target.value)}>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
+              <option value="archived">Archived</option>
             </Select>
           </div>
         </div>

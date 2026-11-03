@@ -134,17 +134,12 @@ export default function TimesheetsPage() {
     if (!open.length) return;
     setBusy(true);
     try {
-      await Promise.all(
-        open.map((s) =>
-          pb.collection("timesheets").update(s.id, {
-            status: "approved",
-            approved_by: user?.id,
-            approved_at: new Date().toISOString(),
-          }),
-        ),
-      );
-      await load();
-      toast(`Approved ${open.length} timesheets.`);
+      const result = await pb.send<{ approved: number }>("/api/openroster/timesheets/approve", {
+        method: "POST",
+        body: { ids: open.map((s) => s.id) },
+      })
+      await load()
+      toast(`Approved ${result.approved} timesheet${result.approved === 1 ? "" : "s"}.`)
     } catch (err) {
       toast(errorMessage(err), "error");
     } finally {

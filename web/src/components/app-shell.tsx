@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
+  AlertTriangle,
   BarChart3,
   CalendarDays,
   ClipboardCheck,
@@ -184,6 +185,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-[#e6d4ac] bg-[#fbf2dd] px-3.5 py-2.5 text-[11px] leading-relaxed text-[#82621c]">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <p>
+              <strong>Alpha.</strong> Not tax-compliant. Payroll here is a configurable preview, not
+              withholding, filings or direct deposit. Do not use it to pay real people yet.
+            </p>
+          </div>
           {children}
         </main>
       </div>

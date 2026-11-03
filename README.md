@@ -4,6 +4,8 @@
 
 Built for restaurants, clinics and shops that run on real shifts. One PocketBase binary, one Next.js app, SQLite. No per-seat cloud.
 
+> **Alpha — not payroll-compliant.** Payroll here is a configurable preview, not tax withholding, filings or direct deposit. **Do not use it to pay real people yet.** Read [Status](#status) and [Scope boundaries](#scope-boundaries-read-this) before deploying.
+
 ![OpenRoster dashboard](docs/dashboard.png)
 
 ## Why this exists
@@ -12,14 +14,25 @@ Built for restaurants, clinics and shops that run on real shifts. One PocketBase
 
 OpenRoster borrows the *ideas* — Staffjoy's company/location/team/worker model and TimeTrex's punch → timesheet → pay-run pipeline — and implements them from scratch. No TimeTrex code is used. The repo is MIT.
 
+## Status
+
+OpenRoster is a **working alpha**. The delivery backlog is public:
+
+- [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
+- [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — next.
+- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — later.
+- [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — later.
+- [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
+
 ## What v1 does
 
-- **Schedule** — week board and hour-by-hour timeline, location filter, draft/publish, realtime updates, overlap validation.
+- **First-run setup** — create the company, first location and first administrator in the browser. Demo data is opt-in.
+- **Schedule** — week board and hour-by-hour timeline, location filter, draft/publish, realtime updates, overlap validation, manual leave/hour-cap checks.
 - **Auto-fill** — assigns open shifts using availability, approved time off, existing shifts, weekly hour caps and position fit. It leaves genuinely uncovered shifts open instead of guessing.
-- **Time clock** — clock in/out from the web, kiosk mode for managers, live “on the clock” list, duplicate-punch protection.
-- **Timesheets** — generated from punches (scheduled hours are a fallback), daily and weekly overtime, PTO, approve individually or in bulk.
-- **Payroll** — preview and draft runs from approved timesheets, configurable percent/fixed rules, per-stub breakdown, pay history, mark paid.
-- **People** — profiles, pay, availability, documents, PTO balance, recent punches.
+- **Time clock** — clock in/out from the web, kiosk mode for managers, live “on the clock” list, duplicate-punch and backdating protection.
+- **Timesheets** — generated from punches (scheduled hours are a fallback), daily and weekly overtime, PTO, approve individually or in bulk. Approved sheets are locked.
+- **Payroll** — preview and draft runs from approved timesheets, configurable percent/fixed rules, per-stub breakdown, pay history, draft → approved → paid → voided, no destructive deletes.
+- **People** — profiles, pay, availability, documents, PTO balance, recent punches, archive/restore.
 - **Time off** — requests, approve/deny queue, balances.
 - **Reports** — scheduled vs actual hours, labor by department, coverage, overtime watch.
 - **Settings** — company, locations, departments, positions, pay rules, holidays, role-based access, audit log.
@@ -49,15 +62,30 @@ Requirements: Node 22+, npm, and `curl`/`unzip`.
 
 ```bash
 make setup                 # download PocketBase + npm install
-make admin                 # create superuser admin@openroster.local / OpenRoster123!
 make dev-pb                # terminal 1 — http://127.0.0.1:8097
-make seed                  # terminal 2 — demo company + punches + timesheets
-make dev-web               # terminal 3 — http://127.0.0.1:3000
+make dev-web               # terminal 2 — http://127.0.0.1:3000
 ```
 
-If PocketBase is not on the default port, copy `web/.env.example` to `web/.env.local` and change `NEXT_PUBLIC_PB_URL`.
+Open **http://127.0.0.1:3000/setup** on a fresh database. The setup screen creates the company, first location and administrator, then signs you in. The setup endpoint disables itself after the first account exists.
 
-### Demo accounts
+A PocketBase superuser is only needed for the PocketBase dashboard (`/_/`), not for the app:
+
+```bash
+make admin ADMIN_PASSWORD='a-strong-superuser-password'
+```
+
+`make admin` refuses to run without a password. If PocketBase is not on the default port, set `NEXT_PUBLIC_PB_URL` in your local env file.
+
+### Demo data (optional)
+
+The demo is **not** installed by default. With PocketBase running:
+
+```bash
+make admin ADMIN_PASSWORD='demo-superuser-password'
+PB_SUPERUSER_PASSWORD='demo-superuser-password' make seed
+```
+
+The seed creates “Harbor & Hearth”, two locations, 12 people, two weeks of shifts, punches for today, generated timesheets and a draft pay run. It is date-relative, so it always lands in the current week.
 
 | Role | Email | Password |
 |---|---|---|
@@ -65,9 +93,7 @@ If PocketBase is not on the default port, copy `web/.env.example` to `web/.env.l
 | Manager | `jordan@harborhearth.co` | `OpenRoster123!` |
 | Team member | `sam@harborhearth.co` | `OpenRoster123!` |
 
-The seed creates “Harbor & Hearth”, two locations, 12 people, two weeks of shifts, punches for today, generated timesheets and a draft pay run. It is date-relative, so it always lands in the current week.
-
-> **Change the superuser password** with `ADMIN_PASSWORD=... make admin` before exposing the app.
+These are **demo credentials only**. Change or remove them before exposing a real deployment.
 
 ## Docker
 
@@ -75,16 +101,29 @@ The seed creates “Harbor & Hearth”, two locations, 12 people, two weeks of s
 NEXT_PUBLIC_PB_URL=http://localhost:8097 docker compose up --build
 ```
 
-Then create the superuser and seed from the host:
+Open http://localhost:3000/setup for a clean workspace.
+
+For the optional demo, create a superuser and seed from the host:
 
 ```bash
-docker compose exec pocketbase pocketbase superuser upsert admin@openroster.local 'change-me' --dir=/pb_data
-PB_URL=http://127.0.0.1:8097 PB_SUPERUSER=admin@openroster.local PB_SUPERUSER_PASSWORD=change-me node scripts/seed.mjs
+docker compose exec pocketbase pocketbase superuser upsert admin@openroster.local 'your-strong-password' --dir=/pb_data
+PB_URL=http://127.0.0.1:8097 PB_SUPERUSER=admin@openroster.local PB_SUPERUSER_PASSWORD='your-strong-password' node scripts/seed.mjs
 ```
 
-Open http://localhost:3000. The PocketBase dashboard is at http://localhost:8097/_/.
+The PocketBase dashboard is at http://localhost:8097/_/; keep it private.
 
-`NEXT_PUBLIC_PB_URL` is baked into the browser bundle at image build time, so set it to the URL the **browser** will use (not a Docker-internal hostname). For production, put both services behind HTTPS and keep the PocketBase dashboard private.
+`NEXT_PUBLIC_PB_URL` is baked into the browser bundle at image build time, so set it to the URL the **browser** will use (not a Docker-internal hostname). For production, put both services behind HTTPS.
+
+## Tests and CI
+
+```bash
+make test        # payroll, timesheet and date unit tests
+make test-api    # fresh PocketBase: seed, login, auto-fill, timesheets, payroll, locks, setup
+make test-ui     # Playwright: seeded dashboard/schedule/payroll + first-run setup
+cd web && npm run lint && npm run build
+```
+
+CI runs build, lint, unit tests, API/setup tests and a secret scan. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## Data model
 
@@ -92,18 +131,18 @@ Open http://localhost:3000. The PocketBase dashboard is at http://localhost:8097
 |---|---|
 | `companies`, `locations`, `departments`, `positions` | Org structure |
 | `users` (auth) | Login + role: `admin`, `manager`, `employee` |
-| `employees` | Profile, pay type/rate, max hours, PTO, manager |
+| `employees` | Profile, pay type/rate, max hours, PTO, manager, archive state |
 | `availability` | Repeating weekly windows |
 | `time_off_requests` | Vacation/sick/unpaid, approval state |
-| `shifts` | Assigned or open, draft/published, breaks |
+| `shifts` | Assigned or open, draft/published, local date, breaks |
 | `punches` | In/out events with source and optional location |
 | `timesheets`, `timesheet_entries` | Period totals and daily detail |
-| `pay_runs`, `pay_stubs` | Draft/paid runs and per-person breakdowns |
+| `pay_runs`, `pay_stubs` | Draft/approved/paid/voided runs and per-person breakdowns |
 | `pay_rules` | Percent / per-hour / per-period withholdings and contributions |
-| `holidays`, `documents` | Calendar and HR files |
-| `audit_log` | Manager actions on shifts, people and pay runs |
+| `holidays`, `documents` | Calendar and protected HR files |
+| `audit_log` | Actor, summary, before/after snapshots |
 
-Schema lives in `pb/pb_migrations/`. Access rules are part of the schema: employees can read their own records, managers their company, admins everything.
+Schema lives in `pb/pb_migrations/`. Access rules are part of the schema: employees can read their own records, managers their company, admins everything. History-bearing relations no longer cascade-delete; people are archived instead.
 
 ## How scheduling works
 
@@ -112,7 +151,7 @@ Schema lives in `pb/pb_migrations/`. Access rules are part of the schema: employ
 - hard filters: approved time off, overlapping shift, weekly hour cap, location, availability window (if any are defined)
 - score: position match, department match, location match, fairness (fewer scheduled hours wins), overtime risk, same-day continuity
 
-The client sends per-day UTC offsets for the company timezone, because PocketBase's JS runtime has no `Intl`. Only empty shifts are touched, and nothing is assigned if no one passes the hard filters.
+The client sends per-day UTC offsets for the company timezone, because PocketBase's JS runtime has no `Intl`. Manual assignment additionally checks approved leave and the weekly hour cap server-side. Only empty shifts are touched, and nothing is assigned if no one passes the hard filters.
 
 ## How pay is calculated
 
@@ -121,7 +160,7 @@ The client sends per-day UTC offsets for the company timezone, because PocketBas
 3. Salary: annual rate prorated by calendar days in the period.
 4. Each active `pay_rule` adds a withholding or employer contribution: percent of gross, fixed per hour, or fixed per period.
 5. Net = gross − employee taxes − employee deductions. Employer taxes are reported as cost, not withheld.
-6. Creating a run writes `pay_runs` + `pay_stubs` in a draft. Marking it paid also marks the period's timesheets paid.
+6. Creating a run writes `pay_runs` + `pay_stubs` in a transaction. Approved runs are locked. Voiding keeps stubs and timesheets for the audit trail.
 
 ## Scope boundaries (read this)
 
@@ -132,16 +171,16 @@ OpenRoster is a complete workflow, not a compliance product.
 - **Single tenant.** One company per install. Multi-tenant isolation is not implemented.
 - **SQLite / PocketBase scale.** Excellent for a few hundred staff and modest concurrency; not a distributed enterprise system.
 - **Geofence fields are stored, not enforced.** Latitude/longitude/radius exist on locations and punches, but clock-in does not reject out-of-radius punches.
-- **PTO balance is informational.** Approving time off adds PTO hours to the timesheet but does not decrement the employee balance automatically.
 - **No shift swaps, open-shift marketplace, push notifications, or mobile app.**
-- **Salary proration uses calendar days**, not a payroll calendar. `pay_frequency` is stored but not used for exact salary splits.
-- **Auto-fill uses client-computed timezone offsets** for the selected week. That is correct across the week, including DST changes.
+- **PTO balance is informational.** Approving time off adds PTO hours to the timesheet but does not decrement the employee balance automatically.
+- **No pay periods yet.** Payroll still uses a selected date range; `pay_frequency` is stored but not yet used to generate periods.
 - **No automated email/SMS.** PocketBase email settings are available but not configured.
-- **Tests are smoke tests, not a suite.** The flows were exercised against a live PocketBase instance; there is no CI yet.
+- **Tests are not a full regression suite.** CI covers payroll math, date helpers, API smoke and setup; browser coverage is still thin.
 
 ## Project layout
 
 ```
+.github/                CI, issue templates, PR template
 pb/
   pb_migrations/        schema, rules, indexes, timestamps
   pb_hooks/main.pb.js   routes + validation + audit
@@ -149,11 +188,16 @@ pb/
 web/
   src/app/(app)/        Today, Schedule, Time Clock, Timesheets, Requests,
                         People, Payroll, Reports, Settings
+  src/app/setup/        first-run wizard
   src/components/       UI system, schedule, clock, modals
   src/lib/              PocketBase client, auth, types, date/format helpers
 scripts/
   seed.mjs              date-relative demo company
+  test-api.mjs          seeded API smoke test
+  test-setup.mjs        empty-workspace setup test
   fetch-pocketbase.sh   pinned binary download
+tests/
+  lib.test.cjs          payroll, overtime and date unit tests
 docs/                   screenshots
 ```
 

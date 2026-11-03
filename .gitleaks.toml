@@ -1,0 +1,8 @@
+[allowlist]
+description = "Demo accounts and test-only credentials documented in the repository"
+regexes = [
+  '''OpenRoster123!''',
+  '''demo-superuser-password''',
+  '''test-superuser-password''',
+  '''a-very-long-password''',
+]

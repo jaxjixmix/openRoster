@@ -153,7 +153,8 @@ routerAdd("POST", "/api/openroster/schedule/auto", (e) => {
   const unfilled = []
   let totalAssigned = 0
 
-  shifts.forEach((shift) => {
+  e.app.runInTransaction((txApp) => {
+    shifts.forEach((shift) => {
     const startMs = h.toMs(shift.getString("starts_at"))
     const endMs = h.toMs(shift.getString("ends_at"))
     const hours = Math.max(0, (endMs - startMs) / 3600000 - (shift.getFloat("break_minutes") || 0) / 60)
@@ -222,10 +223,11 @@ routerAdd("POST", "/api/openroster/schedule/auto", (e) => {
 
     shift.set("employee", best.id)
     shift.set("source", "auto")
-    e.app.save(shift)
+    txApp.save(shift)
     shiftsByEmployee[best.id] = (shiftsByEmployee[best.id] || []).concat([shift])
     hoursByEmployee[best.id] = (hoursByEmployee[best.id] || 0) + hours
     totalAssigned++
+    })
   })
 
   return e.json(200, {
@@ -259,115 +261,119 @@ routerAdd("POST", "/api/openroster/timesheets/generate", (e) => {
   const dailyLimit = company.getFloat("overtime_daily_hours") || 8
   let sheets = 0
 
-  employees.forEach((emp) => {
-    if (emp.getString("pay_type") === "salary") return
-    const punches = h.workedMinutesByDay(e.app, emp.id, startDate, endDate)
-    const shifts = e.app.findRecordsByFilter(
-      "shifts",
-      "employee = {:employee} && starts_at >= {:start} && starts_at < {:end} && ends_at < {:now}",
-      "starts_at",
-      300,
-      0,
-      {
-        employee: emp.id,
-        start: startDate + " 00:00:00.000Z",
-        end: h.addDays(endDate, 1) + " 00:00:00.000Z",
-        now: new Date().toISOString(),
-      }
-    )
-    const byDay = {}
-    shifts.forEach((s) => {
-      const key = h.isoDate(s.getString("starts_at"))
-      const mins = (h.toMs(s.getString("ends_at")) - h.toMs(s.getString("starts_at"))) / 60000 - (s.getFloat("break_minutes") || 0)
-      if (mins > 0) byDay[key] = (byDay[key] || 0) + mins
-    })
-    Object.keys(punches).forEach((key) => { byDay[key] = punches[key] })
-
-    const off = h.approvedTimeOff(e.app, emp.id, startDate, endDate)
-    let ptoHours = 0
-    off.forEach((r) => { ptoHours += r.getFloat("hours") || 0 })
-
-    const days = Object.keys(byDay).sort()
-    if (!days.length && ptoHours === 0) return
-
-    const daily = {}
-    days.forEach((day) => {
-      const hours = h.round2(byDay[day] / 60)
-      const ot = dailyLimit > 0 ? h.round2(Math.max(0, hours - dailyLimit)) : 0
-      daily[day] = { regular: h.round2(hours - ot), overtime: ot }
-    })
-
-    const weekTotals = {}
-    Object.keys(daily).forEach((day) => {
-      const wk = h.weekKey(day)
-      weekTotals[wk] = h.round2((weekTotals[wk] || 0) + daily[day].regular)
-    })
-    Object.keys(daily).forEach((day) => {
-      const wk = h.weekKey(day)
-      if (weekTotals[wk] > weeklyLimit) {
-        const excess = h.round2(weekTotals[wk] - weeklyLimit)
-        const take = Math.min(excess, daily[day].regular)
-        daily[day].regular = h.round2(daily[day].regular - take)
-        daily[day].overtime = h.round2(daily[day].overtime + take)
-        weekTotals[wk] = h.round2(weekTotals[wk] - take)
-      }
-    })
-
-    let regular = 0
-    let overtime = 0
-    Object.keys(daily).forEach((day) => {
-      regular += daily[day].regular
-      overtime += daily[day].overtime
-    })
-
-    let sheet
-    try {
-      sheet = e.app.findFirstRecordByFilter(
-        "timesheets",
-        "employee = {:employee} && period_start = {:start}",
-        { employee: emp.id, start: startDate + " 00:00:00.000Z" }
+  e.app.runInTransaction((txApp) => {
+    employees.forEach((emp) => {
+      if (emp.getString("pay_type") === "salary") return
+      const punches = h.workedMinutesByDay(txApp, emp.id, startDate, endDate)
+      const shifts = txApp.findRecordsByFilter(
+        "shifts",
+        "employee = {:employee} && starts_at >= {:start} && starts_at < {:end} && ends_at < {:now}",
+        "starts_at",
+        300,
+        0,
+        {
+          employee: emp.id,
+          start: startDate + " 00:00:00.000Z",
+          end: h.addDays(endDate, 1) + " 00:00:00.000Z",
+          now: new Date().toISOString(),
+        }
       )
-      if (sheet.getString("status") !== "open") return
-    } catch (err) {
-      sheet = new Record(e.app.findCollectionByNameOrId("timesheets"))
-      sheet.set("employee", emp.id)
-      sheet.set("period_start", startDate + " 00:00:00.000Z")
-      sheet.set("period_end", endDate + " 00:00:00.000Z")
-      sheet.set("status", "open")
-    }
+      const byDay = {}
+      shifts.forEach((s) => {
+        const key = h.isoDate(s.getString("starts_at"))
+        const mins = (h.toMs(s.getString("ends_at")) - h.toMs(s.getString("starts_at"))) / 60000 - (s.getFloat("break_minutes") || 0)
+        if (mins > 0) byDay[key] = (byDay[key] || 0) + mins
+      })
+      Object.keys(punches).forEach((key) => { byDay[key] = punches[key] })
 
-    sheet.set("regular_hours", h.round2(regular))
-    sheet.set("overtime_hours", h.round2(overtime))
-    sheet.set("pto_hours", h.round2(ptoHours))
-    sheet.set("total_hours", h.round2(regular + overtime + ptoHours))
-    e.app.save(sheet)
+      const off = h.approvedTimeOff(txApp, emp.id, startDate, endDate)
+      let ptoHours = 0
+      off.forEach((r) => { ptoHours += r.getFloat("hours") || 0 })
 
-    const oldEntries = e.app.findRecordsByFilter("timesheet_entries", "timesheet = {:sheet}", "date", 1000, 0, { sheet: sheet.id })
-    oldEntries.forEach((entry) => e.app.delete(entry))
+      const days = Object.keys(byDay).sort()
+      if (!days.length && ptoHours === 0) return
 
-    Object.keys(daily).sort().forEach((day) => {
-      const entry = new Record(e.app.findCollectionByNameOrId("timesheet_entries"))
-      entry.set("timesheet", sheet.id)
-      entry.set("employee", emp.id)
-      entry.set("date", day + " 00:00:00.000Z")
-      entry.set("regular_hours", daily[day].regular)
-      entry.set("overtime_hours", daily[day].overtime)
-      entry.set("note", punches[day] ? "From punches" : "From scheduled shift")
-      e.app.save(entry)
+      const computed = h.computeTimesheetHours(byDay, dailyLimit, weeklyLimit)
+      const daily = computed.daily
+
+      let sheet
+      try {
+        sheet = txApp.findFirstRecordByFilter(
+          "timesheets",
+          "employee = {:employee} && period_start = {:start}",
+          { employee: emp.id, start: startDate + " 00:00:00.000Z" }
+        )
+        if (sheet.getString("status") !== "open") return
+      } catch (err) {
+        sheet = new Record(txApp.findCollectionByNameOrId("timesheets"))
+        sheet.set("employee", emp.id)
+        sheet.set("period_start", startDate + " 00:00:00.000Z")
+        sheet.set("period_end", endDate + " 00:00:00.000Z")
+        sheet.set("status", "open")
+      }
+
+      sheet.set("regular_hours", computed.regular)
+      sheet.set("overtime_hours", computed.overtime)
+      sheet.set("pto_hours", h.round2(ptoHours))
+      sheet.set("total_hours", h.round2(computed.regular + computed.overtime + ptoHours))
+      txApp.save(sheet)
+
+      const oldEntries = txApp.findRecordsByFilter("timesheet_entries", "timesheet = {:sheet}", "date", 1000, 0, { sheet: sheet.id })
+      oldEntries.forEach((entry) => txApp.delete(entry))
+
+      Object.keys(daily).sort().forEach((day) => {
+        const entry = new Record(txApp.findCollectionByNameOrId("timesheet_entries"))
+        entry.set("timesheet", sheet.id)
+        entry.set("employee", emp.id)
+        entry.set("date", day + " 00:00:00.000Z")
+        entry.set("regular_hours", daily[day].regular)
+        entry.set("overtime_hours", daily[day].overtime)
+        entry.set("note", punches[day] ? "From punches" : "From scheduled shift")
+        txApp.save(entry)
+      })
+      if (ptoHours > 0) {
+        const entry = new Record(txApp.findCollectionByNameOrId("timesheet_entries"))
+        entry.set("timesheet", sheet.id)
+        entry.set("employee", emp.id)
+        entry.set("date", startDate + " 00:00:00.000Z")
+        entry.set("pto_hours", h.round2(ptoHours))
+        entry.set("note", "Approved paid time off")
+        txApp.save(entry)
+      }
+      sheets++
     })
-    if (ptoHours > 0) {
-      const entry = new Record(e.app.findCollectionByNameOrId("timesheet_entries"))
-      entry.set("timesheet", sheet.id)
-      entry.set("employee", emp.id)
-      entry.set("date", startDate + " 00:00:00.000Z")
-      entry.set("pto_hours", h.round2(ptoHours))
-      entry.set("note", "Approved paid time off")
-      e.app.save(entry)
-    }
-    sheets++
   })
 
   return e.json(200, { sheets: sheets, period_start: startDate, period_end: endDate })
+}, $apis.requireAuth())
+
+// ------------------------------------------------------------------ timesheet approval
+routerAdd("POST", "/api/openroster/timesheets/approve", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  const ids = Array.isArray(body.ids) ? body.ids : []
+  if (!ids.length) return h.bad(e, "No timesheets selected.")
+
+  let approved = 0
+  e.app.runInTransaction((txApp) => {
+    ids.forEach((id) => {
+      const sheet = txApp.findRecordById("timesheets", id)
+      const status = sheet.getString("status")
+      if (status === "approved") return
+      if (status === "paid") return
+      if (status !== "open" && status !== "submitted") {
+        throw new BadRequestError("Only open timesheets can be approved.")
+      }
+      sheet.set("status", "approved")
+      sheet.set("approved_by", e.auth.id)
+      sheet.set("approved_at", new Date().toISOString())
+      txApp.save(sheet)
+      approved++
+    })
+  })
+
+  return e.json(200, { approved: approved })
 }, $apis.requireAuth())
 
 // ------------------------------------------------------------------ payroll
@@ -385,6 +391,71 @@ routerAdd("POST", "/api/openroster/payroll/run", (e) => {
   const result = h.payrollPayload(e.app, e.auth, e.requestInfo().body || {}, true)
   if (result.error) return h.bad(e, result.error)
   return e.json(200, result)
+}, $apis.requireAuth())
+
+// ------------------------------------------------------------------ pay run lifecycle
+routerAdd("POST", "/api/openroster/payroll/status", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  const status = String(body.status || "")
+  if (!body.run) return h.bad(e, "Pay run is required.")
+  if (status !== "approved" && status !== "paid" && status !== "voided") {
+    return h.bad(e, "Status must be approved, paid or voided.")
+  }
+
+  let paidSheets = 0
+  let beforeState = null
+  let afterState = null
+  e.app.runInTransaction((txApp) => {
+    const run = txApp.findRecordById("pay_runs", body.run)
+    const from = run.getString("status")
+    const keys = ["status", "period_start", "period_end", "total_gross", "total_tax", "total_deductions", "total_net", "void_reason"]
+    beforeState = h.snapshot(run, keys)
+
+    if (status === "approved") {
+      if (from !== "draft") throw new BadRequestError("Only draft pay runs can be approved.")
+      run.set("status", "approved")
+      txApp.save(run)
+      return
+    }
+
+    if (status === "paid") {
+      if (from !== "approved") throw new BadRequestError("Only approved pay runs can be marked paid.")
+      run.set("status", "paid")
+      txApp.save(run)
+      const sheets = txApp.findRecordsByFilter(
+        "timesheets",
+        "employee.company = {:company} && period_start >= {:start} && period_end <= {:end} && status = 'approved'",
+        "",
+        1000,
+        0,
+        {
+          company: run.getString("company"),
+          start: run.getString("period_start"),
+          end: run.getString("period_end"),
+        }
+      )
+      sheets.forEach((sheet) => {
+        sheet.set("status", "paid")
+        txApp.save(sheet)
+        paidSheets++
+      })
+      return
+    }
+
+    if (from === "voided") throw new BadRequestError("This pay run is already voided.")
+    run.set("status", "voided")
+    run.set("voided_at", new Date().toISOString())
+    run.set("void_reason", String(body.reason || "Voided by manager"))
+    txApp.save(run)
+  })
+
+  const saved = e.app.findRecordById("pay_runs", body.run)
+  afterState = h.snapshot(saved, ["status", "period_start", "period_end", "total_gross", "total_tax", "total_deductions", "total_net", "void_reason"])
+  h.audit(e.app, e.auth, "pay_runs", body.run, "payroll", "Pay run marked " + status + (paidSheets ? " (" + paidSheets + " timesheets paid)" : ""), beforeState, afterState)
+
+  return e.json(200, { ok: true, timesheets_paid: paidSheets })
 }, $apis.requireAuth())
 
 // ------------------------------------------------------------------ bootstrap
@@ -416,6 +487,126 @@ routerAdd("GET", "/api/openroster/bootstrap", (e) => {
   })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ first-run setup
+routerAdd("GET", "/api/openroster/status", (e) => {
+  let setupRequired = true
+  let demoAvailable = false
+  try {
+    const companies = e.app.findRecordsByFilter("companies", "1 = 1", "", 1, 0)
+    const users = e.app.findRecordsByFilter("users", "1 = 1", "", 1, 0)
+    setupRequired = companies.length === 0 && users.length === 0
+  } catch (err) {
+    setupRequired = true
+  }
+  try {
+    e.app.findAuthRecordByEmail("users", "maya@harborhearth.co")
+    demoAvailable = true
+  } catch (err) {}
+  return e.json(200, { setup_required: setupRequired, demo_available: demoAvailable })
+})
+
+routerAdd("POST", "/api/openroster/setup", (e) => {
+  const body = e.requestInfo().body || {}
+  const companies = e.app.findRecordsByFilter("companies", "1 = 1", "", 1, 0)
+  const users = e.app.findRecordsByFilter("users", "1 = 1", "", 1, 0)
+  if (companies.length || users.length) {
+    return e.json(409, { message: "This workspace is already initialized." })
+  }
+
+  const companyName = String(body.company_name || "").trim()
+  const adminName = String(body.admin_name || "").trim()
+  const adminEmail = String(body.admin_email || "").trim().toLowerCase()
+  const adminPassword = String(body.admin_password || "")
+  const locationName = String(body.location_name || "").trim()
+  const locationAddress = String(body.location_address || "").trim()
+  const timezone = String(body.timezone || "America/Los_Angeles")
+  const currency = String(body.currency || "USD").toUpperCase().slice(0, 3)
+  const weekStart = String(body.week_start || "1") === "0" ? "0" : "1"
+
+  if (!companyName) return e.json(400, { message: "Company name is required." })
+  if (!adminName) return e.json(400, { message: "Administrator name is required." })
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(adminEmail)) return e.json(400, { message: "A valid administrator email is required." })
+  if (adminPassword.length < 10) return e.json(400, { message: "Use a password with at least 10 characters." })
+  if (!locationName) return e.json(400, { message: "A first location is required." })
+
+  let ids = {}
+  e.app.runInTransaction((txApp) => {
+    const company = new Record(txApp.findCollectionByNameOrId("companies"))
+    company.set("name", companyName)
+    company.set("legal_name", companyName)
+    company.set("timezone", timezone)
+    company.set("currency", currency)
+    company.set("week_start", weekStart)
+    company.set("pay_frequency", "biweekly")
+    company.set("overtime_weekly_hours", 40)
+    company.set("overtime_daily_hours", 8)
+    company.set("overtime_multiplier", 1.5)
+    company.set("setup_complete", true)
+    txApp.save(company)
+
+    const location = new Record(txApp.findCollectionByNameOrId("locations"))
+    location.set("company", company.id)
+    location.set("name", locationName)
+    location.set("address", locationAddress)
+    location.set("timezone", timezone)
+    location.set("active", true)
+    txApp.save(location)
+
+    const department = new Record(txApp.findCollectionByNameOrId("departments"))
+    department.set("company", company.id)
+    department.set("name", "General")
+    department.set("color", "#3F6B57")
+    txApp.save(department)
+
+    const position = new Record(txApp.findCollectionByNameOrId("positions"))
+    position.set("company", company.id)
+    position.set("department", department.id)
+    position.set("name", "Team member")
+    position.set("default_rate", 0)
+    position.set("active", true)
+    txApp.save(position)
+
+    const user = new Record(txApp.findCollectionByNameOrId("users"))
+    user.set("email", adminEmail)
+    user.set("password", adminPassword)
+    user.set("passwordConfirm", adminPassword)
+    user.set("name", adminName)
+    user.set("role", "admin")
+    user.set("verified", true)
+    txApp.save(user)
+
+    const parts = adminName.split(/\s+/)
+    const employee = new Record(txApp.findCollectionByNameOrId("employees"))
+    employee.set("user", user.id)
+    employee.set("company", company.id)
+    employee.set("location", location.id)
+    employee.set("department", department.id)
+    employee.set("position", position.id)
+    employee.set("first_name", parts[0] || "Admin")
+    employee.set("last_name", parts.slice(1).join(" ") || "User")
+    employee.set("email", adminEmail)
+    employee.set("hire_date", new Date().toISOString())
+    employee.set("employment_type", "full_time")
+    employee.set("pay_type", "salary")
+    employee.set("pay_rate", 0)
+    employee.set("overtime_exempt", true)
+    employee.set("max_weekly_hours", 40)
+    employee.set("pto_balance_hours", 0)
+    employee.set("status", "active")
+    txApp.save(employee)
+
+    ids = { company: company.id, location: location.id, user: user.id, employee: employee.id }
+  })
+
+  return e.json(201, {
+    ok: true,
+    company_id: ids.company,
+    location_id: ids.location,
+    user_id: ids.user,
+    employee_id: ids.employee,
+  })
+})
+
 // ------------------------------------------------------------------ validation
 onRecordCreateRequest((e) => {
   const h = require(`${__hooks}/lib.js`)
@@ -432,6 +623,8 @@ onRecordCreateRequest((e) => {
       { employee: e.record.getString("employee"), start: e.record.getString("starts_at"), end: e.record.getString("ends_at") }
     )
     if (clashes.length) throw new BadRequestError("This employee already has an overlapping shift.")
+    const assignmentError = h.shiftAssignmentError(e.app, e.record, e.record.getString("employee"), "")
+    if (assignmentError) throw new BadRequestError(assignmentError)
   }
   e.next()
 }, "shifts")
@@ -451,6 +644,8 @@ onRecordUpdateRequest((e) => {
       { employee: e.record.getString("employee"), start: e.record.getString("starts_at"), end: e.record.getString("ends_at"), id: e.record.id }
     )
     if (clashes.length) throw new BadRequestError("This employee already has an overlapping shift.")
+    const assignmentError = h.shiftAssignmentError(e.app, e.record, e.record.getString("employee"), e.record.id)
+    if (assignmentError) throw new BadRequestError(assignmentError)
   }
   e.next()
 }, "shifts")
@@ -489,6 +684,49 @@ onRecordUpdateRequest((e) => {
   e.next()
 }, "users")
 
+onRecordUpdateRequest((e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (e.auth && e.auth.isSuperuser()) return e.next()
+  const original = e.record.original()
+  if (!original) return e.next()
+
+  const from = original.getString("status")
+  const to = e.record.getString("status")
+  const moneyFields = ["employee", "period_start", "period_end", "regular_hours", "overtime_hours", "pto_hours", "total_hours"]
+  const changed = !h.sameFields(original, e.record, moneyFields)
+
+  if (from === "approved" && (changed || (to !== "approved" && to !== "paid"))) {
+    throw new BadRequestError("Approved timesheets are locked. Use a correction workflow.")
+  }
+  if (from === "paid") {
+    throw new BadRequestError("Paid timesheets are locked.")
+  }
+  e.next()
+}, "timesheets")
+
+onRecordUpdateRequest((e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (e.auth && e.auth.isSuperuser()) return e.next()
+  const original = e.record.original()
+  if (!original) return e.next()
+
+  const from = original.getString("status")
+  const to = e.record.getString("status")
+  const moneyFields = ["company", "period_start", "period_end", "total_gross", "total_tax", "total_deductions", "total_net"]
+  const changed = !h.sameFields(original, e.record, moneyFields)
+
+  if (from === "approved" && (changed || (to !== "paid" && to !== "voided"))) {
+    throw new BadRequestError("Approved pay runs are locked. Mark them paid or void them.")
+  }
+  if (from === "paid" && to !== "voided") {
+    throw new BadRequestError("Paid pay runs are locked. Void the run to correct it.")
+  }
+  if (from === "voided") {
+    throw new BadRequestError("Voided pay runs are immutable.")
+  }
+  e.next()
+}, "pay_runs")
+
 // ------------------------------------------------------------------ audit
 onRecordCreateRequest((e) => {
   const h = require(`${__hooks}/lib.js`)
@@ -522,14 +760,20 @@ onRecordUpdateRequest((e) => {
 
 onRecordUpdateRequest((e) => {
   const h = require(`${__hooks}/lib.js`)
+  const keys = ["status", "period_start", "period_end", "total_gross", "total_tax", "total_deductions", "total_net", "void_reason"]
+  const before = h.snapshot(e.record.original(), keys)
   e.next()
-  h.audit(e.app, e.auth, "pay_runs", e.record.id, "payroll", "Pay run marked " + e.record.getString("status"))
+  const after = h.snapshot(e.record, keys)
+  h.audit(e.app, e.auth, "pay_runs", e.record.id, "payroll", "Pay run marked " + e.record.getString("status"), before, after)
 }, "pay_runs")
 
 onRecordUpdateRequest((e) => {
   const h = require(`${__hooks}/lib.js`)
+  const keys = ["status", "regular_hours", "overtime_hours", "pto_hours", "total_hours", "approved_by", "approved_at"]
+  const before = h.snapshot(e.record.original(), keys)
   e.next()
-  h.audit(e.app, e.auth, "timesheets", e.record.id, "update", "Timesheet marked " + e.record.getString("status"))
+  const after = h.snapshot(e.record, keys)
+  h.audit(e.app, e.auth, "timesheets", e.record.id, "update", "Timesheet marked " + e.record.getString("status"), before, after)
 }, "timesheets")
 
 onRecordDeleteRequest((e) => {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  Ban,
   ChevronDown,
   Download,
   FileText,
@@ -127,24 +128,35 @@ export default function PayrollPage() {
   async function setRunStatus(run: PayRun, status: "approved" | "paid") {
     setBusy(true);
     try {
-      await pb.collection("pay_runs").update(run.id, { status });
-      if (status === "paid") {
-        const periodSheets = await getTimesheets({
-          periodStart: `${run.period_start.slice(0, 10)} 00:00:00.000Z`,
-          periodEnd: `${run.period_end.slice(0, 10)} 23:59:59.999Z`,
-        });
-        await Promise.all(
-          periodSheets
-            .filter((s) => s.status === "approved")
-            .map((s) => pb.collection("timesheets").update(s.id, { status: "paid" })),
-        );
-      }
+      await pb.send("/api/openroster/payroll/status", {
+        method: "POST",
+        body: { run: run.id, status },
+      });
       await load();
       toast(`Pay run marked ${status}.`);
     } catch (err) {
       toast(errorMessage(err), "error");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function voidRun(run: PayRun) {
+    const reason = window.prompt("Why is this pay run being voided? This keeps the stubs and timesheets for the audit trail.")
+    if (!reason) return
+    setBusy(true)
+    try {
+      await pb.collection("pay_runs").update(run.id, {
+        status: "voided",
+        void_reason: reason,
+        voided_at: new Date().toISOString(),
+      })
+      await load()
+      toast("Pay run voided. Its stubs and timesheets remain for the audit trail.")
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -357,10 +369,11 @@ export default function PayrollPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <p className="text-xs font-semibold">{formatDate(run.period_start, "UTC")} – {formatDate(run.period_end, "UTC")}</p>
-                      <Badge tone={run.status === "paid" ? "success" : run.status === "approved" ? "sage" : "warning"}>{run.status}</Badge>
+                      <Badge tone={run.status === "paid" ? "success" : run.status === "approved" ? "sage" : run.status === "voided" ? "neutral" : "warning"}>{run.status}</Badge>
                     </div>
                     <p className="mt-0.5 text-[10px] text-muted">
                       {run.pay_date ? `Pay date ${formatDate(run.pay_date, "UTC")} · ` : ""}Net {money(run.total_net)} · Gross {money(run.total_gross)}
+                      {run.void_reason ? ` · ${run.void_reason}` : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -370,6 +383,11 @@ export default function PayrollPage() {
                     )}
                     {run.status === "approved" && (
                       <Button size="sm" onClick={() => setRunStatus(run, "paid")} loading={busy}><ShieldCheck className="size-3.5" /> Mark paid</Button>
+                    )}
+                    {run.status !== "voided" && (
+                      <Button variant="ghost" size="sm" onClick={() => void voidRun(run)} disabled={busy}>
+                        <Ban className="size-3.5" /> Void
+                      </Button>
                     )}
                   </div>
                 </div>

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   Clock3,
   FileText,
@@ -154,6 +156,25 @@ export default function PersonPage() {
     return map;
   }, [availability]);
 
+  async function toggleArchive() {
+    if (!person) return
+    const archiving = person.status !== "archived"
+    const message = archiving
+      ? `Archive ${fullName(person)}? They will disappear from scheduling; payroll history stays intact.`
+      : `Restore ${fullName(person)} to the active roster?`
+    if (!window.confirm(message)) return
+    try {
+      await pb.collection("employees").update(person.id, {
+        status: archiving ? "archived" : "active",
+        archived_at: archiving ? new Date().toISOString() : "",
+      })
+      await load()
+      toast(archiving ? "Person archived." : "Person restored.")
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    }
+  }
+
   async function addAvailability() {
     if (!person) return;
     setAvailBusy(true);
@@ -253,7 +274,7 @@ export default function PersonPage() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">{fullName(person)}</h1>
-              <Badge tone={person.status === "active" ? "success" : "danger"}>{person.status}</Badge>
+              <Badge tone={person.status === "active" ? "success" : person.status === "archived" ? "neutral" : "danger"}>{person.status}</Badge>
               {person.expand?.user && <Badge tone={person.expand.user.role === "admin" ? "dark" : person.expand.user.role === "manager" ? "sage" : "neutral"}>{person.expand.user.role}</Badge>}
             </div>
             <p className="mt-1 text-sm text-muted">
@@ -267,9 +288,15 @@ export default function PersonPage() {
             </div>
           </div>
           {canEdit && (
-            <Button variant="outline" onClick={() => setEditOpen(true)}>
-              <Pencil className="size-4" /> Edit profile
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setEditOpen(true)}>
+                <Pencil className="size-4" /> Edit profile
+              </Button>
+              <Button variant="outline" onClick={() => void toggleArchive()}>
+                {person.status === "archived" ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+                {person.status === "archived" ? "Restore" : "Archive"}
+              </Button>
+            </div>
           )}
         </div>
         <div className="grid grid-cols-2 border-t border-line sm:grid-cols-4">

@@ -2,8 +2,13 @@
 // Seeds a demo company. Safe to re-run: creates a second company with a suffix.
 const PB = process.env.PB_URL || "http://127.0.0.1:8097";
 const EMAIL = process.env.PB_SUPERUSER || "admin@openroster.local";
-const PASSWORD = process.env.PB_SUPERUSER_PASSWORD || "OpenRoster123!";
+const PASSWORD = process.env.PB_SUPERUSER_PASSWORD;
 const TZ = process.env.DEMO_TZ || "America/Los_Angeles";
+
+if (!PASSWORD) {
+  console.error("Set PB_SUPERUSER_PASSWORD to the PocketBase superuser password.");
+  process.exit(1);
+}
 
 let token = "";
 
@@ -220,6 +225,7 @@ async function main() {
           employee: t.key ? employees[t.key].id : undefined,
           starts_at: iso(date, t.start),
           ends_at: iso(date, t.end),
+          local_date: `${date} 00:00:00.000Z`,
           break_minutes: t.break,
           status: "published",
           source: "manual",

@@ -77,7 +77,8 @@ export interface Employee extends BaseRecord {
   overtime_exempt?: boolean;
   max_weekly_hours?: number;
   pto_balance_hours?: number;
-  status?: "active" | "inactive";
+  status?: "active" | "inactive" | "archived";
+  archived_at?: string;
   notes?: string;
   expand?: {
     user?: User;
@@ -96,6 +97,7 @@ export interface Shift extends BaseRecord {
   employee?: string;
   starts_at: string;
   ends_at: string;
+  local_date?: string;
   break_minutes?: number;
   status: "draft" | "published";
   source?: "manual" | "auto" | "swap";
@@ -185,7 +187,9 @@ export interface PayRun extends BaseRecord {
   period_start: string;
   period_end: string;
   pay_date?: string;
-  status: "draft" | "approved" | "paid";
+  status: "draft" | "approved" | "paid" | "voided";
+  voided_at?: string;
+  void_reason?: string;
   total_gross?: number;
   total_tax?: number;
   total_deductions?: number;

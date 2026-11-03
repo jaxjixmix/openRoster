@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CalendarDays, Clock3, Eye, EyeOff, ShieldCheck, Wallet } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { pb } from "@/lib/pb";
 import { Button, ErrorNote, Input, Label } from "@/components/ui";
+
+interface SetupStatus {
+  setup_required: boolean;
+  demo_available: boolean;
+}
 
 const DEMOS = [
   { label: "Administrator", email: "maya@harborhearth.co", role: "Full access" },
@@ -15,8 +21,9 @@ const DEMOS = [
 export default function LoginPage() {
   const { login, user, loading } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("maya@harborhearth.co");
-  const [password, setPassword] = useState("OpenRoster123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [demoAvailable, setDemoAvailable] = useState(false);
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,6 +31,25 @@ export default function LoginPage() {
   useEffect(() => {
     if (!loading && user) router.replace("/");
   }, [loading, user, router]);
+
+  useEffect(() => {
+    let cancelled = false
+    pb.send<SetupStatus>("/api/openroster/status", { method: "GET" })
+      .then((status) => {
+        if (cancelled) return
+        if (status.setup_required) {
+          router.replace("/setup")
+          return
+        }
+        setDemoAvailable(status.demo_available)
+        if (status.demo_available) {
+          setEmail("maya@harborhearth.co")
+          setPassword("OpenRoster123!")
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,7 +78,7 @@ export default function LoginPage() {
           </span>
           <span className="text-sm font-semibold tracking-tight">OpenRoster</span>
           <span className="ml-auto rounded-full border border-white/15 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[#b9b3a3]">
-            Self-hosted
+            Self-hosted · Alpha
           </span>
         </div>
 
@@ -157,6 +183,8 @@ export default function LoginPage() {
             </Button>
           </form>
 
+          {demoAvailable && (
+            <>
           <div className="my-7 flex items-center gap-3">
             <span className="h-px flex-1 bg-line" />
             <span className="text-[10px] uppercase tracking-[0.14em] text-muted">Demo accounts</span>
@@ -185,6 +213,11 @@ export default function LoginPage() {
           </div>
           <p className="mt-4 text-center text-[10px] text-muted">
             Password for all demo accounts: <span className="font-mono">OpenRoster123!</span>
+          </p>
+            </>
+          )}
+          <p className="mt-8 text-center text-[10px] leading-relaxed text-muted">
+            Alpha software. Not tax-compliant. Do not use for real payroll.
           </p>
         </div>
       </div>

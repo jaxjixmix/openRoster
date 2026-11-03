@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Download PocketBase
+        run: make pb
+
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      - name: Install Chromium
+        run: cd web && npx playwright install --with-deps chromium
+
+      - name: Lint
+        run: cd web && npm run lint
+
+      - name: Build
+        run: cd web && npm run build
+        env:
+          NEXT_PUBLIC_PB_URL: http://127.0.0.1:18097
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Unit tests
+        run: node --test tests/*.test.cjs
+
+      - name: API and setup tests
+        run: make test-api
+
+      - name: Browser smoke test
+        run: make test-ui
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

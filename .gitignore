@@ -36,3 +36,11 @@ web/out/
 
 # Local demo screenshots / notes
 docs/*.tmp
+
+# Test data
+pb/.test-data/
+pb/.test-setup-data/
+pb/.test-ui-data/
+pb/.test-setup-ui-data/
+web/test-results/
+web/playwright-report/

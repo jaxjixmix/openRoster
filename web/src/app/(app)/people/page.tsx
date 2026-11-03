@@ -138,6 +138,7 @@ export default function PeoplePage() {
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="sm:w-36">
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
+          <option value="archived">Archived</option>
           <option value="">All statuses</option>
         </Select>
       </div>
