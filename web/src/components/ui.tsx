@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { Loader2, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { avatarTone, initials } from "@/lib/format";
@@ -45,6 +45,7 @@ export function Button({
         className,
       )}
       disabled={loading || props.disabled}
+      aria-busy={loading || undefined}
       {...props}
     >
       {loading && <Loader2 className="size-4 animate-spin" />}
@@ -185,16 +186,56 @@ export function Modal({
   footer?: ReactNode;
   width?: "sm" | "md" | "lg" | "xl";
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<Element | null>(null);
+  const titleId = useId();
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    previousFocus.current = document.activeElement;
+
+    const focusables = () => {
+      const panel = panelRef.current;
+      if (!panel) return [] as HTMLElement[];
+      return Array.from(panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea, input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.offsetParent !== null);
     };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const nodes = focusables();
+      if (!nodes.length) {
+        e.preventDefault();
+        panelRef.current?.focus();
+        return;
+      }
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    const timer = window.setTimeout(() => {
+      const nodes = focusables();
+      (nodes[0] || panelRef.current)?.focus();
+    }, 0);
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
+      window.clearTimeout(timer);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
+      if (previousFocus.current instanceof HTMLElement) previousFocus.current.focus();
     };
   }, [open, onClose]);
 
@@ -205,9 +246,11 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
       <div className="absolute inset-0 bg-ink/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className={cn(
           "rise-in relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-line bg-surface shadow-2xl sm:rounded-2xl",
           widths[width],
@@ -215,7 +258,7 @@ export function Modal({
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-5">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+            <h2 id={titleId} className="text-lg font-semibold tracking-tight">{title}</h2>
             {description && <p className="mt-1 text-sm text-muted">{description}</p>}
           </div>
           <button
@@ -327,7 +370,7 @@ export function Spinner({ label = "Loading" }: { label?: string }) {
 export function ErrorNote({ children }: { children: ReactNode }) {
   if (!children) return null;
   return (
-    <div className="rounded-lg border border-[#eccac4] bg-[#f9eeec] px-3 py-2 text-sm text-[#8e342b]">
+    <div role="alert" className="rounded-lg border border-[#eccac4] bg-[#f9eeec] px-3 py-2 text-sm text-[#8e342b]">
       {children}
     </div>
   );
@@ -343,10 +386,26 @@ export function Tabs<T extends string>({
   tabs: Array<{ value: T; label: string; count?: number }>;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-line">
+    <div
+      role="tablist"
+      aria-label="Sections"
+      onKeyDown={(e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        const index = tabs.findIndex((tab) => tab.value === value);
+        const next = (index + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        onChange(tabs[next].value);
+        const buttons = e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+        buttons[next]?.focus();
+      }}
+      className="flex flex-wrap items-center gap-1 border-b border-line"
+    >
       {tabs.map((tab) => (
         <button
           key={tab.value}
+          role="tab"
+          aria-selected={value === tab.value}
+          tabIndex={value === tab.value ? 0 : -1}
           onClick={() => onChange(tab.value)}
           className={cn(
             "relative px-3 pb-3 pt-1 text-sm font-medium transition",

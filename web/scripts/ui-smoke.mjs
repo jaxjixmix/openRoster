@@ -106,6 +106,11 @@ async function main() {
     await page.getByRole("button", { name: /Add shift/ }).first().click();
     await page.getByRole("dialog").waitFor();
     assert.match(await page.getByRole("dialog").innerText(), /Create a shift/);
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    assert.match(await page.evaluate(() => document.activeElement?.textContent?.trim() || ""), /Add shift/);
+    await page.getByRole("button", { name: /Add shift/ }).first().click();
+    await page.getByRole("dialog").waitFor();
     await page.getByRole("dialog").getByRole("button", { name: "Add shift" }).click();
     await page.waitForTimeout(900);
     assert.match(await page.locator(".fixed.bottom-5").innerText(), /Shift added/);

@@ -109,6 +109,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     : "text-[#b9b3a3] hover:bg-white/[0.05] hover:text-[#f2efe5]",
                 )}
               >
+                aria-current={active ? "page" : undefined}
                 {active && (
                   <span className="absolute -left-3 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-accent" />
                 )}
@@ -130,6 +131,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <button
             onClick={logout}
             className="rounded-md p-1.5 text-[#8e8878] transition hover:bg-white/10 hover:text-white"
+            aria-label="Sign out"
             title="Sign out"
           >
             <LogOut className="size-3.5" />
@@ -159,6 +161,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-ink focus:px-4 focus:py-2 focus:text-sm focus:text-white"
+      >
+        Skip to content
+      </a>
       <aside className="print:hidden fixed inset-y-0 left-0 z-40 hidden w-[248px] lg:block">
         <Sidebar />
       </aside>
@@ -183,6 +191,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => setMobileOpen(true)}
             className="rounded-lg border border-line bg-raised p-2"
+            aria-label="Open navigation"
           >
             <Menu className="size-4" />
           </button>
@@ -197,7 +206,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <div className="print:hidden mb-5 flex items-start gap-2.5 rounded-xl border border-[#e6d4ac] bg-[#fbf2dd] px-3.5 py-2.5 text-[11px] leading-relaxed text-[#82621c]">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <p>
