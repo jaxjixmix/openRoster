@@ -537,6 +537,46 @@ function accruePto(app, employee, amount, periodStart, periodEnd, createdBy) {
   syncPtoBalance(app, employee.id)
 }
 
+function employeeSummary(app, employeeId) {
+  if (!employeeId) return null
+  try {
+    const employee = app.findRecordById("employees", employeeId)
+    return {
+      id: employee.id,
+      name: (employee.getString("first_name") + " " + employee.getString("last_name")).trim(),
+    }
+  } catch (err) {
+    return null
+  }
+}
+
+function swapView(app, swap) {
+  let shift = null
+  try { shift = app.findRecordById("shifts", swap.getString("shift")) } catch (err) { return null }
+  let position = ""
+  let location = ""
+  try { position = app.findRecordById("positions", shift.getString("position")).getString("name") } catch (err) {}
+  try { location = app.findRecordById("locations", shift.getString("location")).getString("name") } catch (err) {}
+  return {
+    id: swap.id,
+    status: swap.getString("status"),
+    note: swap.getString("note"),
+    created: swap.getString("created"),
+    shift: {
+      id: shift.id,
+      starts_at: shift.getString("starts_at"),
+      ends_at: shift.getString("ends_at"),
+      local_date: shift.getString("local_date"),
+      local_start: shift.getString("local_start"),
+      local_end: shift.getString("local_end"),
+      position: position,
+      location: location,
+    },
+    offered_by: employeeSummary(app, swap.getString("offered_by")),
+    accepted_by: employeeSummary(app, swap.getString("accepted_by")),
+  }
+}
+
 function notificationPrefs(user) {
   let prefs = {}
   try { prefs = user.get("notification_prefs") || {} } catch (err) {}
@@ -671,6 +711,8 @@ module.exports = {
   removePtoUsage: removePtoUsage,
   accruePto: accruePto,
   notify: notify,
+  employeeSummary: employeeSummary,
+  swapView: swapView,
   notifyEmployee: notifyEmployee,
   notifyManagers: notifyManagers,
   notificationPrefs: notificationPrefs,

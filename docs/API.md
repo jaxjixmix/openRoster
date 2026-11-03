@@ -14,6 +14,10 @@ All routes except `status` and `setup` require `Authorization: <PocketBase auth 
 | POST | `/api/openroster/schedule/auto` | manager | Auto-fill `{week_start, location?, offsets}` |
 | POST | `/api/openroster/schedule/copy` | manager | Copy `{from_week, to_week, from_offsets, to_offsets}` into an empty week |
 | POST | `/api/openroster/shifts/claim` | staff | Claim an open published shift `{shift}` |
+| GET | `/api/openroster/swaps` | auth | List open/own/company swaps |
+| POST | `/api/openroster/swaps` | staff | Offer own shift `{shift, note?}` |
+| POST | `/api/openroster/swaps/accept` | staff | Accept `{swap}` |
+| POST | `/api/openroster/swaps/status` | manager/owner | `{swap, status: approved|denied|cancelled}` |
 | POST | `/api/openroster/timesheets/generate` | manager | Roll up `{period_start, period_end}` |
 | POST | `/api/openroster/timesheets/approve` | manager | Bulk approve `{ids}` |
 | POST | `/api/openroster/pay_periods/generate` | manager | Generate periods `{from, to}` |

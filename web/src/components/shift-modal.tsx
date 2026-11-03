@@ -20,6 +20,8 @@ interface Props {
   canEdit: boolean;
   canClaim?: boolean;
   onClaim?: () => void;
+  canOfferSwap?: boolean;
+  onOfferSwap?: () => void;
   employees: Employee[];
   locations: Location[];
   departments: Department[];
@@ -36,6 +38,8 @@ export function ShiftModal({
   canEdit,
   canClaim = false,
   onClaim,
+  canOfferSwap = false,
+  onOfferSwap,
   employees,
   locations,
   departments,
@@ -181,6 +185,11 @@ export function ShiftModal({
           <>
             <Button variant="ghost" onClick={onClose}>Close</Button>
             <Button onClick={onClaim}>Claim shift</Button>
+          </>
+        ) : canOfferSwap && onOfferSwap ? (
+          <>
+            <Button variant="ghost" onClick={onClose}>Close</Button>
+            <Button variant="outline" onClick={onOfferSwap}>Offer for swap</Button>
           </>
         ) : (
           <Button variant="outline" onClick={onClose}>Close</Button>

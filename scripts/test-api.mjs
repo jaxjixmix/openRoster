@@ -194,6 +194,51 @@ async function main() {
     assert.ok(notifications.data.items.some((notification) => notification.title === "Shift claimed"), "claim creates notification");
     console.log("PASS in-app notification");
 
+    const swapDate = new Date(new Date(weekStart + "T00:00:00Z").getTime() + 35 * 86400000).toISOString().slice(0, 10);
+    const swapShift = await request("/api/collections/shifts/records", {
+      method: "POST",
+      token,
+      body: {
+        company: bootstrap.data.company.id,
+        location: sam.location,
+        department: sam.department,
+        position: sam.position,
+        employee: sam.id,
+        starts_at: `${swapDate} 17:00:00.000Z`,
+        ends_at: `${swapDate} 21:00:00.000Z`,
+        local_date: `${swapDate} 00:00:00.000Z`,
+        local_start: "10:00",
+        local_end: "14:00",
+        status: "published",
+      },
+    });
+    assert.equal(swapShift.status, 200, "swap shift created");
+    const offered = await request("/api/openroster/swaps", {
+      method: "POST",
+      token: samLogin.data.token,
+      body: { shift: swapShift.data.id, note: "Test swap" },
+    });
+    assert.equal(offered.status, 200, "shift offered for swap");
+    const owenLogin = await request("/api/collections/users/auth-with-password", {
+      method: "POST",
+      body: { identity: "owen@harborhearth.co", password: "OpenRoster123!" },
+    });
+    const accepted = await request("/api/openroster/swaps/accept", {
+      method: "POST",
+      token: owenLogin.data.token,
+      body: { swap: offered.data.swap.id },
+    });
+    assert.equal(accepted.status, 200, "swap accepted");
+    const approved = await request("/api/openroster/swaps/status", {
+      method: "POST",
+      token,
+      body: { swap: offered.data.swap.id, status: "approved" },
+    });
+    assert.equal(approved.status, 200, "swap approved");
+    const reassigned = await request(`/api/collections/shifts/records/${swapShift.data.id}`, { token });
+    assert.equal(reassigned.data.employee, employeesForShift.data.items.find((employee) => employee.first_name === "Owen").id);
+    console.log("PASS shift swap");
+
     const copyTarget = new Date(new Date(weekStart + "T00:00:00Z").getTime() + 28 * 86400000).toISOString().slice(0, 10);
     const copied = await request("/api/openroster/schedule/copy", {
       method: "POST",

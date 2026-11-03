@@ -466,6 +466,143 @@ routerAdd("POST", "/api/openroster/schedule/copy", (e) => {
   return e.json(200, { created: created, from_week: fromStart, to_week: toStart })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ shift swaps
+routerAdd("GET", "/api/openroster/swaps", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!e.auth) return h.bad(e, "Sign in first.", 401)
+  const employee = h.employeeForUser(e.app, e.auth.id)
+  let filter = ""
+  let params = {}
+  if (!h.isManager(e.auth)) {
+    if (!employee) return e.json(200, { items: [] })
+    filter = "status = 'open' || offered_by = {:employee} || accepted_by = {:employee}"
+    params = { employee: employee.id }
+  }
+  const rows = e.app.findRecordsByFilter("shift_swaps", filter, "-created", 200, 0, params)
+  const items = rows.map((row) => h.swapView(e.app, row)).filter(Boolean)
+  return e.json(200, { items: items })
+}, $apis.requireAuth())
+
+routerAdd("POST", "/api/openroster/swaps", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!e.auth) return h.bad(e, "Sign in first.", 401)
+  const employee = h.employeeForUser(e.app, e.auth.id)
+  if (!employee) return h.bad(e, "No employee profile is linked to this account.", 404)
+  const body = e.requestInfo().body || {}
+  if (!body.shift) return h.bad(e, "Shift is required.")
+  const shift = e.app.findRecordById("shifts", body.shift)
+  if (shift.getString("employee") !== employee.id) return h.bad(e, "You can only offer your own shift.", 403)
+  if (shift.getString("status") !== "published") return h.bad(e, "Only published shifts can be offered.", 409)
+
+  const existing = e.app.findRecordsByFilter(
+    "shift_swaps",
+    "shift = {:shift} && (status = 'open' || status = 'accepted')",
+    "",
+    1,
+    0,
+    { shift: shift.id }
+  )
+  if (existing.length) return h.bad(e, "This shift already has an open swap.", 409)
+
+  let swap = null
+  e.app.runInTransaction((txApp) => {
+    const record = new Record(txApp.findCollectionByNameOrId("shift_swaps"))
+    record.set("shift", shift.id)
+    record.set("offered_by", employee.id)
+    record.set("status", "open")
+    record.set("note", String(body.note || ""))
+    record.set("created_by", e.auth.id)
+    txApp.save(record)
+    swap = record
+  })
+  h.notifyManagers(e.app, "claim", "Shift offered for swap", "A team member offered a shift for swap.", "/swaps")
+  h.audit(e.app, e.auth, "shift_swaps", swap.id, "schedule", "Offered shift for swap")
+  return e.json(200, { swap: h.swapView(e.app, swap) })
+}, $apis.requireAuth())
+
+routerAdd("POST", "/api/openroster/swaps/accept", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!e.auth) return h.bad(e, "Sign in first.", 401)
+  const employee = h.employeeForUser(e.app, e.auth.id)
+  if (!employee) return h.bad(e, "No employee profile is linked to this account.", 404)
+  const body = e.requestInfo().body || {}
+  let swap = e.app.findRecordById("shift_swaps", body.swap)
+  if (swap.getString("status") !== "open") return h.bad(e, "This swap is no longer open.", 409)
+  if (swap.getString("offered_by") === employee.id) return h.bad(e, "You cannot accept your own swap.")
+
+  const shift = e.app.findRecordById("shifts", swap.getString("shift"))
+  if (shift.getString("employee") !== swap.getString("offered_by")) return h.bad(e, "This shift changed; offer a new swap.", 409)
+  const error = h.shiftAssignmentError(e.app, shift, employee.id, shift.id)
+  if (error) return h.bad(e, error)
+
+  e.app.runInTransaction((txApp) => {
+    const record = txApp.findRecordById("shift_swaps", swap.id)
+    record.set("accepted_by", employee.id)
+    record.set("status", "accepted")
+    txApp.save(record)
+    swap = record
+  })
+  h.notifyEmployee(e.app, swap.getString("offered_by"), "claim", "Swap accepted", "Someone accepted your shift swap. A manager still needs to approve it.", "/swaps")
+  h.notifyManagers(e.app, "claim", "Swap awaiting approval", "A shift swap was accepted and needs manager approval.", "/swaps")
+  h.audit(e.app, e.auth, "shift_swaps", swap.id, "schedule", "Accepted shift swap")
+  return e.json(200, { swap: h.swapView(e.app, swap) })
+}, $apis.requireAuth())
+
+routerAdd("POST", "/api/openroster/swaps/status", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!e.auth) return h.bad(e, "Sign in first.", 401)
+  const body = e.requestInfo().body || {}
+  const status = String(body.status || "")
+  if (!["approved", "denied", "cancelled"].includes(status)) return h.bad(e, "Invalid swap status.")
+  let swap = e.app.findRecordById("shift_swaps", body.swap)
+  const from = swap.getString("status")
+  if (from === "approved" || from === "denied" || from === "cancelled") return h.bad(e, "This swap is already closed.", 409)
+
+  if (status === "cancelled") {
+    const own = h.employeeForUser(e.app, e.auth.id)
+    if (!h.isManager(e.auth) && (!own || own.id !== swap.getString("offered_by"))) {
+      return h.bad(e, "You can only cancel your own swap.", 403)
+    }
+  } else if (!h.isManager(e.auth)) {
+    return h.bad(e, "Manager access required.", 403)
+  }
+
+  if (status === "approved") {
+    if (from !== "accepted") return h.bad(e, "Only an accepted swap can be approved.", 409)
+    const accepted = swap.getString("accepted_by")
+    if (!accepted) return h.bad(e, "No one has accepted this swap.", 409)
+    const shift = e.app.findRecordById("shifts", swap.getString("shift"))
+    const error = h.shiftAssignmentError(e.app, shift, accepted, shift.id)
+    if (error) return h.bad(e, error)
+    e.app.runInTransaction((txApp) => {
+      const record = txApp.findRecordById("shift_swaps", swap.id)
+      const target = txApp.findRecordById("shifts", shift.id)
+      target.set("employee", accepted)
+      target.set("source", "swap")
+      txApp.save(target)
+      record.set("status", "approved")
+      txApp.save(record)
+      swap = record
+    })
+    h.notifyEmployee(e.app, swap.getString("offered_by"), "claim", "Swap approved", "Your shift swap was approved.", "/schedule")
+    h.notifyEmployee(e.app, accepted, "claim", "Swap approved", "The shift you accepted is now on your schedule.", "/schedule")
+  } else {
+    e.app.runInTransaction((txApp) => {
+      const record = txApp.findRecordById("shift_swaps", swap.id)
+      record.set("status", status)
+      txApp.save(record)
+      swap = record
+    })
+    h.notifyEmployee(e.app, swap.getString("offered_by"), "claim", "Swap " + status, "Your shift swap was " + status + ".", "/swaps")
+    if (swap.getString("accepted_by")) {
+      h.notifyEmployee(e.app, swap.getString("accepted_by"), "claim", "Swap " + status, "The shift swap was " + status + ".", "/swaps")
+    }
+  }
+
+  h.audit(e.app, e.auth, "shift_swaps", swap.id, "schedule", "Swap " + status)
+  return e.json(200, { swap: h.swapView(e.app, swap) })
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ claim an open shift
 routerAdd("POST", "/api/openroster/shifts/claim", (e) => {
   const h = require(`${__hooks}/lib.js`)

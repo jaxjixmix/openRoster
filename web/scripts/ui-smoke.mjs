@@ -135,6 +135,11 @@ async function main() {
     await page.fill("#password", "OpenRoster123!");
     await page.click("button[type=submit]");
     await page.waitForURL(`${WEB_URL}/`, { timeout: 20000 });
+    await page.goto(`${WEB_URL}/swaps`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(700);
+    assert.equal(await page.locator("h1").first().innerText(), "Shift swaps");
+    console.log("PASS swaps page");
+
     await page.goto(`${WEB_URL}/me`, { waitUntil: "networkidle" });
     await page.waitForURL(/\/people\//, { timeout: 20000 });
     await page.waitForTimeout(900);

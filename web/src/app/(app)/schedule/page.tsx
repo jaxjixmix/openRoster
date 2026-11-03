@@ -90,7 +90,7 @@ function layoutDay(shifts: Shift[], tz: string): Positioned[] {
 }
 
 export default function SchedulePage() {
-  const { company, isManager } = useAuth();
+  const { company, employee, isManager } = useAuth();
   const toast = useToast();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);
@@ -226,6 +226,18 @@ export default function SchedulePage() {
       toast(errorMessage(err), "error");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function offerSwap() {
+    if (!selected) return
+    try {
+      await pb.send("/api/openroster/swaps", { method: "POST", body: { shift: selected.id } })
+      toast("Shift offered for swap. A manager will see it in Swaps.")
+      setModalOpen(false)
+      await load()
+    } catch (err) {
+      toast(errorMessage(err), "error")
     }
   }
 
@@ -632,6 +644,8 @@ export default function SchedulePage() {
         canEdit={isManager}
         canClaim={!isManager && !!selected && !selected.employee && selected.status === "published"}
         onClaim={claimShift}
+        canOfferSwap={!isManager && !!selected && selected.employee === employee?.id && selected.status === "published"}
+        onOfferSwap={offerSwap}
         employees={employees}
         locations={locations}
         departments={departments}

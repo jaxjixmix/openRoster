@@ -12,6 +12,7 @@ import type {
   PayStub,
   Punch,
   Shift,
+  ShiftSwap,
   TimeOffRequest,
   Timesheet,
   TimesheetEntry,
@@ -145,6 +146,11 @@ export async function getAvailability(employeeId: string): Promise<Availability[
     filter: pb.filter("employee = {:employee}", { employee: employeeId }),
     sort: "weekday,start_time",
   });
+}
+
+export async function getSwaps(): Promise<ShiftSwap[]> {
+  const result = await pb.send<{ items: ShiftSwap[] }>("/api/openroster/swaps", { method: "GET" });
+  return result.items || [];
 }
 
 export async function getKioskPin(companyId: string): Promise<KioskPin | null> {

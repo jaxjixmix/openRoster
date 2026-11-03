@@ -325,3 +325,22 @@ export interface AppNotification extends BaseRecord {
   link?: string;
   read?: boolean;
 }
+
+export interface ShiftSwap {
+  id: string;
+  status: "open" | "accepted" | "approved" | "denied" | "cancelled";
+  note?: string;
+  created: string;
+  shift: {
+    id: string;
+    starts_at: string;
+    ends_at: string;
+    local_date?: string;
+    local_start?: string;
+    local_end?: string;
+    position?: string;
+    location?: string;
+  };
+  offered_by: { id: string; name: string } | null;
+  accepted_by: { id: string; name: string } | null;
+}
