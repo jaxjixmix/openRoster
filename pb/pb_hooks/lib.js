@@ -230,6 +230,28 @@ function shiftAssignmentError(app, record, employeeId, ignoreId) {
   const leave = approvedTimeOff(app, employeeId, date, date)
   if (leave.length > 0) return "This employee has approved time off on that day."
 
+  const localStart = record.getString("local_start")
+  const localEnd = record.getString("local_end")
+  if (localStart && localEnd) {
+    const weekday = String(new Date(date + "T00:00:00Z").getUTCDay())
+    const allWindows = app.findRecordsByFilter(
+      "availability",
+      "employee = {:employee}",
+      "weekday",
+      200,
+      0,
+      { employee: employeeId }
+    )
+    if (allWindows.length > 0) {
+      const dayWindows = allWindows.filter((window) => String(window.getString("weekday")) === weekday)
+      const covered = dayWindows.some((window) => {
+        return minutesOfDay(window.getString("start_time")) <= minutesOfDay(localStart) &&
+          minutesOfDay(window.getString("end_time")) >= minutesOfDay(localEnd)
+      })
+      if (!covered) return "The employee is not available for this shift window."
+    }
+  }
+
   const weekStartsOn = parseInt(company.getString("week_start") || "1", 10)
   const start = weekStartDate(date, weekStartsOn)
   const end = addDays(start, 6)

@@ -126,6 +126,30 @@ async function main() {
       return match[1] === "-" ? -minutes : minutes;
     });
 
+    const employeesForShift = await request("/api/collections/employees/records?perPage=20", { token });
+    const sam = employeesForShift.data.items.find((employee) => employee.first_name === "Sam");
+    assert.ok(sam, "Sam exists");
+    const sunday = new Date(new Date(weekStart + "T00:00:00Z").getTime() - 86400000).toISOString().slice(0, 10);
+    const invalidShift = await request("/api/collections/shifts/records", {
+      method: "POST",
+      token,
+      body: {
+        company: bootstrap.data.company.id,
+        location: sam.location,
+        department: sam.department,
+        position: sam.position,
+        employee: sam.id,
+        starts_at: `${sunday} 18:00:00.000Z`,
+        ends_at: `${sunday} 20:00:00.000Z`,
+        local_date: `${sunday} 00:00:00.000Z`,
+        local_start: "10:00",
+        local_end: "12:00",
+        status: "published",
+      },
+    });
+    assert.equal(invalidShift.status, 400, "manual assignment outside availability must fail");
+    console.log("PASS manual availability check");
+
     const auto = await request("/api/openroster/schedule/auto", {
       method: "POST",
       token,

@@ -696,7 +696,7 @@ onRecordUpdateRequest((e) => {
   const changed = !h.sameFields(original, e.record, moneyFields)
 
   if (from === "approved" && (changed || (to !== "approved" && to !== "paid"))) {
-    throw new BadRequestError("Approved timesheets are locked. Use a correction workflow.")
+    throw new BadRequestError("Approved timesheets are locked. Ask a superuser to correct them.")
   }
   if (from === "paid") {
     throw new BadRequestError("Paid timesheets are locked.")

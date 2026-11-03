@@ -199,13 +199,13 @@ async function main() {
   const templates = [
     { loc: ferry.id, dept: kitchen.id, pos: pos.line_cook.id, key: "sam", start: "10:00", end: "18:00", break: 30, days: [0, 1, 2, 3, 4] },
     { loc: ferry.id, dept: kitchen.id, pos: pos.prep_cook.id, key: "alicia", start: "07:00", end: "15:00", break: 30, days: [0, 1, 2] },
-    { loc: ferry.id, dept: foh.id, pos: pos.server.id, key: "theo", start: "11:00", end: "19:00", break: 30, days: [1, 2, 3, 5, 6] },
-    { loc: mission.id, dept: foh.id, pos: pos.server.id, key: "priya", start: "12:00", end: "20:00", break: 30, days: [1, 3, 6] },
+    { loc: ferry.id, dept: foh.id, pos: pos.server.id, key: "theo", start: "11:00", end: "19:00", break: 30, days: [1, 2, 3, 4, 5] },
+    { loc: mission.id, dept: foh.id, pos: pos.server.id, key: "priya", start: "12:00", end: "20:00", break: 30, days: [0, 2, 4] },
     { loc: ferry.id, dept: bar.id, pos: pos.bartender.id, key: "luis", start: "17:00", end: "23:00", break: 30, days: [1, 2, 3, 4, 5] },
     { loc: ferry.id, dept: kitchen.id, pos: pos.prep_cook.id, key: null, start: "08:00", end: "14:00", break: 0, days: [0, 2, 4] },
     { loc: mission.id, dept: kitchen.id, pos: pos.line_cook.id, key: "owen", start: "10:00", end: "18:00", break: 30, days: [0, 1, 2, 3, 4] },
-    { loc: mission.id, dept: foh.id, pos: pos.host.id, key: "nina", start: "16:00", end: "22:00", break: 0, days: [0, 1, 5, 6] },
-    { loc: mission.id, dept: bar.id, pos: pos.bartender.id, key: "fatima", start: "17:00", end: "23:30", break: 30, days: [0, 1, 3, 6] },
+    { loc: mission.id, dept: foh.id, pos: pos.host.id, key: "nina", start: "16:00", end: "22:00", break: 0, days: [0, 1, 4, 5] },
+    { loc: mission.id, dept: bar.id, pos: pos.bartender.id, key: "fatima", start: "17:00", end: "23:30", break: 30, days: [0, 1, 3, 4] },
     { loc: ferry.id, dept: foh.id, pos: pos.server.id, key: null, start: "12:00", end: "18:00", break: 0, days: [1, 3, 4, 6] },
     { loc: mission.id, dept: kitchen.id, pos: pos.prep_cook.id, key: "hana", start: "08:00", end: "14:00", break: 0, days: [0, 1, 2] },
     { loc: ferry.id, dept: foh.id, pos: pos.host.id, key: null, start: "15:00", end: "21:00", break: 0, days: [0, 3, 6] },
@@ -217,19 +217,26 @@ async function main() {
       const date = addDays(week, day);
       for (const t of templates) {
         if (!t.days.includes(day)) continue;
-        await create("shifts", {
-          company: company.id,
-          location: t.loc,
-          department: t.dept,
-          position: t.pos,
-          employee: t.key ? employees[t.key].id : undefined,
-          starts_at: iso(date, t.start),
-          ends_at: iso(date, t.end),
-          local_date: `${date} 00:00:00.000Z`,
-          break_minutes: t.break,
-          status: "published",
-          source: "manual",
-        });
+        try {
+          await create("shifts", {
+            company: company.id,
+            location: t.loc,
+            department: t.dept,
+            position: t.pos,
+            employee: t.key ? employees[t.key].id : undefined,
+            starts_at: iso(date, t.start),
+            ends_at: iso(date, t.end),
+            local_date: `${date} 00:00:00.000Z`,
+            local_start: t.start,
+            local_end: t.end,
+            break_minutes: t.break,
+            status: "published",
+            source: "manual",
+          });
+        } catch (err) {
+          console.error("Shift failed:", date, t.key, t.start, t.end, err.message);
+          throw err;
+        }
         shiftCount++;
       }
     }

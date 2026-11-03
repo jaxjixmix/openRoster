@@ -98,6 +98,8 @@ export interface Shift extends BaseRecord {
   starts_at: string;
   ends_at: string;
   local_date?: string;
+  local_start?: string;
+  local_end?: string;
   break_minutes?: number;
   status: "draft" | "published";
   source?: "manual" | "auto" | "swap";
