@@ -150,10 +150,13 @@ export default function SchedulePage() {
   }, [isManager]);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const unsub = pb.collection("shifts").subscribe("*", () => {
-      void load();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void load(); }, 350);
     }).catch(() => {});
     return () => {
+      if (timer) clearTimeout(timer);
       unsub.then((fn) => { if (typeof fn === "function") fn(); }).catch(() => {});
     };
   }, [load]);

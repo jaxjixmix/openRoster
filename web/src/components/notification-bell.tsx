@@ -15,6 +15,7 @@ export function NotificationBell({ dark = false }: { dark?: boolean }) {
   const router = useRouter();
   const tz = company?.timezone || "America/Los_Angeles";
   const [items, setItems] = useState<AppNotification[]>([]);
+  const [unreadTotal, setUnreadTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [prefs, setPrefs] = useState({ in_app: true, email: false });
   const [savingPrefs, setSavingPrefs] = useState(false);
@@ -22,12 +23,19 @@ export function NotificationBell({ dark = false }: { dark?: boolean }) {
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const rows = await pb.collection("notifications").getFullList<AppNotification>({
-        filter: pb.filter("user = {:user}", { user: user.id }),
-        sort: "-created",
-        requestKey: null,
-      });
-      setItems(rows);
+      const [rows, unread] = await Promise.all([
+        pb.collection("notifications").getList<AppNotification>(1, 30, {
+          filter: pb.filter("user = {:user}", { user: user.id }),
+          sort: "-created",
+          requestKey: null,
+        }),
+        pb.collection("notifications").getList(1, 1, {
+          filter: pb.filter("user = {:user} && read = false", { user: user.id }),
+          requestKey: null,
+        }),
+      ]);
+      setItems(rows.items);
+      setUnreadTotal(unread.totalItems);
     } catch {}
   }, [user]);
 
@@ -52,13 +60,14 @@ export function NotificationBell({ dark = false }: { dark?: boolean }) {
     }).catch(() => {});
   }, [user]);
 
-  const unread = items.filter((item) => !item.read).length;
+  const unread = unreadTotal;
 
   async function markRead(item: AppNotification) {
     if (!item.read) {
       try {
         await pb.collection("notifications").update(item.id, { read: true });
         setItems((rows) => rows.map((row) => row.id === item.id ? { ...row, read: true } : row));
+        setUnreadTotal((count) => Math.max(0, count - 1));
       } catch {}
     }
     setOpen(false);
@@ -66,8 +75,7 @@ export function NotificationBell({ dark = false }: { dark?: boolean }) {
   }
 
   async function markAll() {
-    const unreadItems = items.filter((item) => !item.read);
-    await Promise.all(unreadItems.map((item) => pb.collection("notifications").update(item.id, { read: true }).catch(() => {})));
+    await pb.send("/api/openroster/notifications/read-all", { method: "POST" }).catch(() => {});
     await load();
   }
 

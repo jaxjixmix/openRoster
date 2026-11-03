@@ -117,10 +117,10 @@ export default function SettingsPage() {
       if (isAdmin) {
         const [us, audit] = await Promise.all([
           pb.collection("users").getFullList<User>({ sort: "name" }),
-          pb.collection("audit_log").getFullList({ sort: "-at", expand: "actor", perPage: 50 }),
+          pb.collection("audit_log").getList(1, 50, { sort: "-at", expand: "actor" }),
         ]);
         setUsers(us);
-        setActivity(audit as unknown as Array<Record<string, unknown>>);
+        setActivity(audit.items as unknown as Array<Record<string, unknown>>);
       }
       setError("");
     } catch (err) {

@@ -21,7 +21,7 @@ OpenRoster is a **working alpha**. Current release: **v0.4.0-alpha**. The delive
 - [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
 - [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — complete: pay periods, PTO ledger, printable stubs, locale, pay-period clock, DST tests, breaks/rounding, geofence, punch corrections, kiosk PIN, currency/CSV.
 - [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — complete for alpha: self-service, open-shift claiming, notifications/preferences, copy week, swaps, recurring templates, labor budget, time-off calendar/blackouts, certifications, expiry reminders. Demand forecast is explicitly deferred.
-- [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs and CSV. Remaining: monitoring, type generation, i18n/PWA, accessibility pass.
+- [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs, CSV, monitoring, type generation, accessibility and richer reports. Remaining: pagination, retention policy, i18n/PWA.
 - [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
 
 ## What v1 does

@@ -193,7 +193,12 @@ async function main() {
 
     const notifications = await request("/api/collections/notifications/records?perPage=20", { token: samLogin.data.token });
     assert.ok(notifications.data.items.some((notification) => notification.title === "Shift claimed"), "claim creates notification");
-    console.log("PASS in-app notification");
+    const readAll = await request("/api/openroster/notifications/read-all", { method: "POST", token: samLogin.data.token });
+    assert.equal(readAll.status, 200);
+    assert.ok(readAll.data.updated > 0);
+    const readAllAgain = await request("/api/openroster/notifications/read-all", { method: "POST", token: samLogin.data.token });
+    assert.equal(readAllAgain.data.updated, 0);
+    console.log("PASS in-app notification and read-all");
 
     const swapDate = new Date(new Date(weekStart + "T00:00:00Z").getTime() + 35 * 86400000).toISOString().slice(0, 10);
     const swapShift = await request("/api/collections/shifts/records", {

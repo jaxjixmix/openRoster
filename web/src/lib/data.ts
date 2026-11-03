@@ -213,9 +213,10 @@ export async function getPayPeriods(): Promise<PayPeriod[]> {
 }
 
 export async function getPayRuns(): Promise<PayRun[]> {
-  return pb.collection("pay_runs").getFullList<PayRun>({
+  const result = await pb.collection("pay_runs").getList<PayRun>(1, 50, {
     sort: "-period_start",
   });
+  return result.items;
 }
 
 export async function getPayStubs(runId: string): Promise<PayStub[]> {

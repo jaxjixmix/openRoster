@@ -987,6 +987,29 @@ routerAdd("POST", "/api/openroster/client-error", (e) => {
   return e.json(200, { ok: true })
 })
 
+// ------------------------------------------------------------------ notifications
+routerAdd("POST", "/api/openroster/notifications/read-all", (e) => {
+  if (!e.auth) return e.json(401, { message: "Sign in first." })
+  const rows = e.app.findRecordsByFilter(
+    "notifications",
+    "user = {:user} && read = false",
+    "",
+    1000,
+    0,
+    { user: e.auth.id }
+  )
+  let updated = 0
+  e.app.runInTransaction((txApp) => {
+    rows.forEach((row) => {
+      const record = txApp.findRecordById("notifications", row.id)
+      record.set("read", true)
+      txApp.save(record)
+      updated++
+    })
+  })
+  return e.json(200, { updated: updated })
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ expiry reminders
 routerAdd("POST", "/api/openroster/reminders/run", (e) => {
   const h = require(`${__hooks}/lib.js`)
