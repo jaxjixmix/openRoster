@@ -404,6 +404,33 @@ async function main() {
     assert.equal(withCert.status, 200, "certification allows assignment");
     console.log("PASS certifications");
 
+    const expiringCert = await request("/api/collections/certifications/records", {
+      method: "POST",
+      token,
+      body: { company: bootstrap.data.company.id, name: "Expiring License", active: true },
+    });
+    const expiry = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+    await request("/api/collections/employee_certifications/records", {
+      method: "POST",
+      token,
+      body: { company: bootstrap.data.company.id, employee: sam.id, certification: expiringCert.data.id, expires_at: `${expiry} 00:00:00.000Z` },
+    });
+    await request("/api/collections/documents/records", {
+      method: "POST",
+      token,
+      body: { employee: sam.id, name: "Expiring ID", expires_at: `${expiry} 00:00:00.000Z` },
+    });
+    const beforeReminders = await request("/api/collections/notifications/records?perPage=100", { token: samLogin.data.token });
+    const reminders = await request("/api/openroster/reminders/run", { method: "POST", token });
+    assert.equal(reminders.status, 200);
+    assert.ok(reminders.data.certifications >= 1 && reminders.data.documents >= 1);
+    const afterReminders = await request("/api/collections/notifications/records?perPage=100", { token: samLogin.data.token });
+    assert.ok(afterReminders.data.items.length > beforeReminders.data.items.length);
+    await request("/api/openroster/reminders/run", { method: "POST", token });
+    const deduped = await request("/api/collections/notifications/records?perPage=100", { token: samLogin.data.token });
+    assert.equal(deduped.data.items.length, afterReminders.data.items.length, "reminders dedupe per day");
+    console.log("PASS expiry reminders");
+
     const blackout = await request("/api/collections/blackout_dates/records", {
       method: "POST",
       token,

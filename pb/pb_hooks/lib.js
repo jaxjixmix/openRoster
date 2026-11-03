@@ -613,6 +613,58 @@ function swapView(app, swap) {
   }
 }
 
+function runExpiryReminders(app) {
+  const companies = app.findRecordsByFilter("companies", "1 = 1", "-created", 1, 0)
+  const company = companies.length ? companies[0] : null
+  const days = company ? (company.getFloat("expiry_reminder_days") || 30) : 30
+  const today = new Date().toISOString().slice(0, 10)
+  const threshold = addDays(today, days)
+  let certifications = 0
+  let documents = 0
+
+  const certs = app.findRecordsByFilter(
+    "employee_certifications",
+    "expires_at >= {:today} && expires_at <= {:threshold}",
+    "expires_at",
+    1000,
+    0,
+    { today: today + " 00:00:00.000Z", threshold: threshold + " 23:59:59.999Z" }
+  )
+  certs.forEach((row) => {
+    let employee = null
+    try { employee = app.findRecordById("employees", row.getString("employee")) } catch (err) { return }
+    let name = "Certification"
+    try { name = app.findRecordById("certifications", row.getString("certification")).getString("name") } catch (err) {}
+    const employeeName = (employee.getString("first_name") + " " + employee.getString("last_name")).trim()
+    const title = "Certification expiring: " + name + " — " + employeeName
+    const body = name + " expires " + row.getString("expires_at").slice(0, 10) + " for " + employeeName + "."
+    notifyOnce(app, employee.getString("user"), "system", title, body, "/people/" + employee.id)
+    notifyManagersOnce(app, "system", title, body, "/people/" + employee.id)
+    certifications++
+  })
+
+  const docs = app.findRecordsByFilter(
+    "documents",
+    "expires_at >= {:today} && expires_at <= {:threshold}",
+    "expires_at",
+    1000,
+    0,
+    { today: today + " 00:00:00.000Z", threshold: threshold + " 23:59:59.999Z" }
+  )
+  docs.forEach((row) => {
+    let employee = null
+    try { employee = app.findRecordById("employees", row.getString("employee")) } catch (err) { return }
+    const employeeName = (employee.getString("first_name") + " " + employee.getString("last_name")).trim()
+    const title = "Document expiring: " + row.getString("name") + " — " + employeeName
+    const body = row.getString("name") + " expires " + row.getString("expires_at").slice(0, 10) + " for " + employeeName + "."
+    notifyOnce(app, employee.getString("user"), "system", title, body, "/people/" + employee.id)
+    notifyManagersOnce(app, "system", title, body, "/people/" + employee.id)
+    documents++
+  })
+
+  return { certifications: certifications, documents: documents, days: days }
+}
+
 function notificationPrefs(user) {
   let prefs = {}
   try { prefs = user.get("notification_prefs") || {} } catch (err) {}
@@ -672,6 +724,28 @@ function notifyEmployee(app, employeeId, type, title, body, link) {
     const employee = app.findRecordById("employees", employeeId)
     if (employee.getString("user")) notify(app, employee.getString("user"), type, title, body, link)
   } catch (err) {}
+}
+
+function notifyOnce(app, userId, type, title, body, link) {
+  if (!userId) return
+  const today = new Date().toISOString().slice(0, 10) + " 00:00:00.000Z"
+  try {
+    const existing = app.findRecordsByFilter(
+      "notifications",
+      "user = {:user} && title = {:title} && created >= {:today}",
+      "",
+      1,
+      0,
+      { user: userId, title: title, today: today }
+    )
+    if (existing.length) return
+  } catch (err) {}
+  notify(app, userId, type, title, body, link)
+}
+
+function notifyManagersOnce(app, type, title, body, link) {
+  const users = app.findRecordsByFilter("users", "role = 'admin' || role = 'manager'", "name", 100, 0)
+  users.forEach((user) => notifyOnce(app, user.id, type, title, body, link))
 }
 
 function notifyManagers(app, type, title, body, link) {
@@ -751,6 +825,9 @@ module.exports = {
   employeeSummary: employeeSummary,
   swapView: swapView,
   notifyEmployee: notifyEmployee,
+  notifyOnce: notifyOnce,
+  notifyManagersOnce: notifyManagersOnce,
+  runExpiryReminders: runExpiryReminders,
   notifyManagers: notifyManagers,
   notificationPrefs: notificationPrefs,
   distanceMeters: distanceMeters,

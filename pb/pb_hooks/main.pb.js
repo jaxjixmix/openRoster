@@ -972,6 +972,13 @@ routerAdd("POST", "/api/openroster/punches/correct", (e) => {
   return e.json(200, { punch: saved })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ expiry reminders
+routerAdd("POST", "/api/openroster/reminders/run", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  return e.json(200, h.runExpiryReminders(e.app))
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ first-run setup
 routerAdd("GET", "/api/openroster/status", (e) => {
   let setupRequired = true
@@ -1030,6 +1037,7 @@ routerAdd("POST", "/api/openroster/setup", (e) => {
     company.set("overtime_daily_hours", 8)
     company.set("overtime_multiplier", 1.5)
     company.set("setup_complete", true)
+    company.set("expiry_reminder_days", 30)
     txApp.save(company)
 
     const location = new Record(txApp.findCollectionByNameOrId("locations"))
@@ -1358,3 +1366,12 @@ onRecordCreateRequest((e) => {
   }
   e.next()
 }, "punches")
+
+cronAdd("openroster_expiry_reminders", "0 8 * * *", () => {
+  const h = require(`${__hooks}/lib.js`)
+  try {
+    h.runExpiryReminders($app)
+  } catch (err) {
+    console.log("expiry reminders failed: " + err)
+  }
+})

@@ -44,6 +44,10 @@ curl -s http://127.0.0.1:8097/api/openroster/bootstrap \
 - Pay periods are generated from `companies.pay_frequency`; pay date defaults to period end + 5 days.
 - Payroll is a preview/export tool, not a tax engine.
 
+## Expiry reminders
+
+`POST /api/openroster/reminders/run` (manager) scans certifications and documents inside the company reminder window and creates deduplicated in-app/email notifications. A daily cron runs the same job at 08:00.
+
 ## Certifications
 
 `certifications` defines company-wide skills/licenses; `employee_certifications` links them to people with optional expiry. `positions.required_certifications` is enforced by auto-fill, shift assignment, templates and swaps.

@@ -30,6 +30,7 @@ export interface Company extends BaseRecord {
   overtime_multiplier: number;
   punch_rounding_minutes?: number;
   weekly_labor_budget?: number;
+  expiry_reminder_days?: number;
   pto_accrual_hours_per_period?: number;
   pto_accrual_hours_per_hour?: number;
   address?: string;
