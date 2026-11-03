@@ -19,6 +19,7 @@ import { pb } from "@/lib/pb";
 import { useAuth } from "@/lib/auth";
 import {
   errorMessage,
+  getCertifications,
   getDepartments,
   getHolidays,
   getKioskPin,
@@ -27,7 +28,7 @@ import {
   getPositions,
   saveKioskPin,
 } from "@/lib/data";
-import type { Department, Holiday, Location, PayRule, Position, User } from "@/lib/types";
+import type { Certification, Department, Holiday, Location, PayRule, Position, User } from "@/lib/types";
 import { formatDate, toDate } from "@/lib/dates";
 import { roleLabel, titleCase } from "@/lib/format";
 import { useMoney } from "@/lib/currency";
@@ -43,10 +44,11 @@ import {
   Select,
   Spinner,
   Tabs,
+  Textarea,
 } from "@/components/ui";
 import { useToast } from "@/lib/toast";
 
-type Tab = "company" | "locations" | "departments" | "positions" | "pay" | "holidays" | "access" | "activity";
+type Tab = "company" | "locations" | "departments" | "positions" | "certifications" | "pay" | "holidays" | "access" | "activity";
 
 export default function SettingsPage() {
   const { company, user, isManager, refresh } = useAuth();
@@ -56,6 +58,7 @@ export default function SettingsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [certifications, setCertifications] = useState<Certification[]>([]);
   const [payRules, setPayRules] = useState<PayRule[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -87,6 +90,7 @@ export default function SettingsPage() {
   const [locationModal, setLocationModal] = useState<Location | "new" | null>(null);
   const [departmentModal, setDepartmentModal] = useState<Department | "new" | null>(null);
   const [positionModal, setPositionModal] = useState<Position | "new" | null>(null);
+  const [certificationModal, setCertificationModal] = useState<Certification | "new" | null>(null);
   const [payModal, setPayModal] = useState<PayRule | "new" | null>(null);
   const [holidayModal, setHolidayModal] = useState<Holiday | "new" | null>(null);
 
@@ -94,16 +98,18 @@ export default function SettingsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [locs, depts, pos, rules, hols] = await Promise.all([
+      const [locs, depts, pos, certs, rules, hols] = await Promise.all([
         getLocations(),
         getDepartments(),
         getPositions(),
+        getCertifications(),
         getPayRules(),
         getHolidays(),
       ]);
       setLocations(locs);
       setDepartments(depts);
       setPositions(pos);
+      setCertifications(certs);
       setPayRules(rules);
       setHolidays(hols);
 
@@ -223,6 +229,7 @@ export default function SettingsPage() {
     { value: "locations", label: "Locations", count: locations.length },
     { value: "departments", label: "Departments", count: departments.length },
     { value: "positions", label: "Positions", count: positions.length },
+    { value: "certifications", label: "Certifications", count: certifications.length },
     { value: "pay", label: "Pay rules", count: payRules.length },
     { value: "holidays", label: "Holidays", count: holidays.length },
   ];
@@ -400,6 +407,23 @@ export default function SettingsPage() {
           />
         )}
 
+        {tab === "certifications" && (
+          <EntityList
+            title="Certifications"
+            description="Skills and licenses required by positions."
+            icon={<ShieldCheck className="size-4" />}
+            onAdd={() => setCertificationModal("new")}
+            rows={certifications.map((certification) => ({
+              id: certification.id,
+              primary: certification.name,
+              secondary: certification.description || "No description",
+              meta: <Badge tone={certification.active !== false ? "success" : "neutral"}>{certification.active !== false ? "Active" : "Off"}</Badge>,
+              onEdit: () => setCertificationModal(certification),
+              onDelete: () => remove("certifications", certification.id, certification.name),
+            }))}
+          />
+        )}
+
         {tab === "pay" && (
           <EntityList
             title="Pay rules"
@@ -512,7 +536,16 @@ export default function SettingsPage() {
           record={positionModal === "new" ? null : positionModal}
           companyId={company.id}
           departments={departments}
+          certifications={certifications}
           onClose={() => setPositionModal(null)}
+          onSaved={load}
+        />
+      )}
+      {certificationModal && (
+        <CertificationModal
+          record={certificationModal === "new" ? null : certificationModal}
+          companyId={company.id}
+          onClose={() => setCertificationModal(null)}
           onSaved={load}
         />
       )}
@@ -673,9 +706,9 @@ function DepartmentModal({ record, companyId, onClose, onSaved }: { record: Depa
   );
 }
 
-function PositionModal({ record, companyId, departments, onClose, onSaved }: { record: Position | null; companyId: string; departments: Department[]; onClose: () => void; onSaved: () => void }) {
+function PositionModal({ record, companyId, departments, certifications, onClose, onSaved }: { record: Position | null; companyId: string; departments: Department[]; certifications: Certification[]; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const [form, setForm] = useState({ name: record?.name || "", department: record?.department || "", default_rate: String(record?.default_rate || 18) });
+  const [form, setForm] = useState({ name: record?.name || "", department: record?.department || "", default_rate: String(record?.default_rate || 18), required_certifications: record?.required_certifications || [] as string[] });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function save() {
@@ -695,6 +728,30 @@ function PositionModal({ record, companyId, departments, onClose, onSaved }: { r
         <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
         <div><Label>Department</Label><Select value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })}><option value="">None</option>{departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></div>
         <div><Label>Default hourly rate</Label><Input type="number" step="0.01" value={form.default_rate} onChange={(e) => setForm({ ...form, default_rate: e.target.value })} /></div>
+        <div>
+          <Label>Required certifications</Label>
+          {certifications.length === 0 ? (
+            <p className="text-xs text-muted">No certifications configured.</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {certifications.map((certification) => (
+                <label key={certification.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.required_certifications.includes(certification.id)}
+                    onChange={(e) => setForm({
+                      ...form,
+                      required_certifications: e.target.checked
+                        ? [...form.required_certifications, certification.id]
+                        : form.required_certifications.filter((id) => id !== certification.id),
+                    })}
+                  />
+                  {certification.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </Modal>
   );
@@ -736,6 +793,33 @@ function PayRuleModal({ record, companyId, onClose, onSaved }: { record: PayRule
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.employer} onChange={(e) => setForm({ ...form, employer: e.target.checked })} /> Employer contribution</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active</label>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CertificationModal({ record, companyId, onClose, onSaved }: { record: Certification | null; companyId: string; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [form, setForm] = useState({ name: record?.name || "", description: record?.description || "", active: record?.active !== false });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    try {
+      const payload = { ...form, company: companyId };
+      if (record) await pb.collection("certifications").update(record.id, payload);
+      else await pb.collection("certifications").create(payload);
+      toast(record ? "Certification updated." : "Certification added.");
+      onSaved(); onClose();
+    } catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
+  }
+  return (
+    <Modal open onClose={onClose} title={record ? "Edit certification" : "Add certification"} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={save} loading={busy}>Save</Button></>}>
+      <div className="space-y-4">
+        {error && <ErrorNote>{error}</ErrorNote>}
+        <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Food handler" /></div>
+        <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} /></div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active</label>
       </div>
     </Modal>
   );

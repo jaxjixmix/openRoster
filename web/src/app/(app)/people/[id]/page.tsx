@@ -19,8 +19,10 @@ import { useAuth } from "@/lib/auth";
 import {
   errorMessage,
   getAvailability,
+  getCertifications,
   getDepartments,
   getDocuments,
+  getEmployeeCertifications,
   getEmployee,
   getLocations,
   getPositions,
@@ -32,9 +34,11 @@ import {
 } from "@/lib/data";
 import type {
   Availability,
+  Certification,
   Department,
   DocumentRecord,
   Employee,
+  EmployeeCertification,
   Location,
   Position,
   PtoEntry,
@@ -88,6 +92,8 @@ export default function PersonPage() {
   const [punches, setPunches] = useState<Punch[]>([]);
   const [sheets, setSheets] = useState<Timesheet[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [certifications, setCertifications] = useState<Certification[]>([]);
+  const [employeeCertifications, setEmployeeCertifications] = useState<EmployeeCertification[]>([]);
   const [ptoEntries, setPtoEntries] = useState<PtoEntry[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -100,6 +106,8 @@ export default function PersonPage() {
   const [uploading, setUploading] = useState(false);
   const [ptoOpen, setPtoOpen] = useState(false);
   const [ptoForm, setPtoForm] = useState({ type: "adjustment", hours: "0", note: "" });
+  const [certOpen, setCertOpen] = useState(false);
+  const [certForm, setCertForm] = useState({ certification: "", issued_at: "", expires_at: "", note: "" });
 
   const load = useCallback(async () => {
     if (!id || !company) return;
@@ -108,7 +116,7 @@ export default function PersonPage() {
       const weekEnd = toUtcIso(addDaysStr(weekStartDate, 7), "00:00", tz);
       const monthAgo = toUtcIso(addDaysStr(today, -30), "00:00", tz);
       const tomorrow = toUtcIso(addDaysStr(today, 1), "00:00", tz);
-      const [p, s, av, off, pu, ts, docs, pto, locs, depts, pos] = await Promise.all([
+      const [p, s, av, off, pu, ts, docs, pto, certs, employeeCerts, locs, depts, pos] = await Promise.all([
         getEmployee(id),
         getShiftsBetween(weekIso, addDaysStr(weekEnd.slice(0, 10), 30) + " 00:00:00.000Z", { employee: id }),
         getAvailability(id),
@@ -117,6 +125,8 @@ export default function PersonPage() {
         getTimesheets({ employee: id }),
         getDocuments(id),
         getPtoEntries(id),
+        getCertifications(),
+        getEmployeeCertifications(id),
         getLocations(),
         getDepartments(),
         getPositions(),
@@ -129,6 +139,8 @@ export default function PersonPage() {
       setSheets(ts);
       setDocuments(docs);
       setPtoEntries(pto);
+      setCertifications(certs);
+      setEmployeeCertifications(employeeCerts);
       setLocations(locs);
       setDepartments(depts);
       setPositions(pos);
@@ -181,6 +193,38 @@ export default function PersonPage() {
       })
       await load()
       toast(archiving ? "Person archived." : "Person restored.")
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    }
+  }
+
+  async function addCertification() {
+    if (!person || !company) return
+    try {
+      if (!certForm.certification) throw new Error("Choose a certification.")
+      await pb.collection("employee_certifications").create({
+        company: company.id,
+        employee: person.id,
+        certification: certForm.certification,
+        issued_at: certForm.issued_at ? `${certForm.issued_at} 00:00:00.000Z` : undefined,
+        expires_at: certForm.expires_at ? `${certForm.expires_at} 00:00:00.000Z` : undefined,
+        note: certForm.note || undefined,
+      })
+      setCertOpen(false)
+      setCertForm({ certification: "", issued_at: "", expires_at: "", note: "" })
+      await load()
+      toast("Certification added.")
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    }
+  }
+
+  async function removeCertification(row: EmployeeCertification) {
+    if (!window.confirm("Remove this certification?")) return
+    try {
+      await pb.collection("employee_certifications").delete(row.id)
+      await load()
+      toast("Certification removed.", "info")
     } catch (err) {
       toast(errorMessage(err), "error")
     }
@@ -448,6 +492,45 @@ export default function PersonPage() {
           </section>
         </div>
 
+          <section className="panel-raised overflow-hidden">
+            <div className="flex items-center justify-between border-b border-line px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold">Certifications</p>
+                <p className="mt-0.5 text-xs text-muted">Required for positions and shift assignment.</p>
+              </div>
+              {canManage && (
+                <Button variant="ghost" size="sm" onClick={() => setCertOpen(true)}>
+                  <Plus className="size-3.5" /> Add
+                </Button>
+              )}
+            </div>
+            <div className="divide-y divide-line">
+              {employeeCertifications.map((row) => {
+                const expired = row.expires_at ? row.expires_at.slice(0, 10) < today : false
+                return (
+                  <div key={row.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium">{row.expand?.certification?.name || "Certification"}</p>
+                      <p className="text-[10px] text-muted">
+                        {row.issued_at ? `Issued ${formatDate(row.issued_at, "UTC")}` : "No issue date"}
+                        {row.expires_at ? ` · ${expired ? "Expired" : "Expires"} ${formatDate(row.expires_at, "UTC")}` : " · No expiry"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={expired ? "danger" : "success"}>{expired ? "Expired" : "Valid"}</Badge>
+                      {canManage && (
+                        <button onClick={() => void removeCertification(row)} className="text-muted hover:text-danger" title="Remove">
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+              {employeeCertifications.length === 0 && <p className="px-5 py-6 text-center text-xs text-muted">No certifications on file.</p>}
+            </div>
+          </section>
+
         <div className="space-y-5">
           <section className="panel-raised p-5">
             <p className="text-sm font-semibold">Profile</p>
@@ -582,6 +665,30 @@ export default function PersonPage() {
             <Label>Note</Label>
             <Input value={ptoForm.note} onChange={(e) => setPtoForm({ ...ptoForm, note: e.target.value })} placeholder="Why this adjustment?" />
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={certOpen}
+        onClose={() => setCertOpen(false)}
+        title="Add certification"
+        footer={<><Button variant="ghost" onClick={() => setCertOpen(false)}>Cancel</Button><Button onClick={addCertification}>Add certification</Button></>}
+      >
+        <div className="space-y-4">
+          <div>
+            <Label>Certification</Label>
+            <Select value={certForm.certification} onChange={(e) => setCertForm({ ...certForm, certification: e.target.value })}>
+              <option value="">Choose a certification</option>
+              {certifications.filter((certification) => certification.active !== false).map((certification) => (
+                <option key={certification.id} value={certification.id}>{certification.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div><Label>Issued</Label><Input type="date" value={certForm.issued_at} onChange={(e) => setCertForm({ ...certForm, issued_at: e.target.value })} /></div>
+            <div><Label>Expires</Label><Input type="date" value={certForm.expires_at} onChange={(e) => setCertForm({ ...certForm, expires_at: e.target.value })} /></div>
+          </div>
+          <div><Label>Note</Label><Input value={certForm.note} onChange={(e) => setCertForm({ ...certForm, note: e.target.value })} /></div>
         </div>
       </Modal>
 

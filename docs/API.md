@@ -44,6 +44,10 @@ curl -s http://127.0.0.1:8097/api/openroster/bootstrap \
 - Pay periods are generated from `companies.pay_frequency`; pay date defaults to period end + 5 days.
 - Payroll is a preview/export tool, not a tax engine.
 
+## Certifications
+
+`certifications` defines company-wide skills/licenses; `employee_certifications` links them to people with optional expiry. `positions.required_certifications` is enforced by auto-fill, shift assignment, templates and swaps.
+
 ## Time off and blackouts
 
 `blackout_dates` is company-scoped and readable by authenticated staff; managers manage records. The month calendar (`/calendar`) combines leave, blackouts and scheduled-shift conflicts.

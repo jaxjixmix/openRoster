@@ -2,7 +2,9 @@ import { pb } from "./pb";
 import type {
   Availability,
   BlackoutDate,
+  Certification,
   Employee,
+  EmployeeCertification,
   Holiday,
   Location,
   KioskPin,
@@ -147,6 +149,18 @@ export async function getAvailability(employeeId: string): Promise<Availability[
   return pb.collection("availability").getFullList<Availability>({
     filter: pb.filter("employee = {:employee}", { employee: employeeId }),
     sort: "weekday,start_time",
+  });
+}
+
+export async function getCertifications(): Promise<Certification[]> {
+  return pb.collection("certifications").getFullList<Certification>({ sort: "name" });
+}
+
+export async function getEmployeeCertifications(employeeId: string): Promise<EmployeeCertification[]> {
+  return pb.collection("employee_certifications").getFullList<EmployeeCertification>({
+    filter: pb.filter("employee = {:employee}", { employee: employeeId }),
+    expand: "certification",
+    sort: "expires_at",
   });
 }
 

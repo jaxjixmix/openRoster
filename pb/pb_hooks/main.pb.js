@@ -226,6 +226,8 @@ routerAdd("POST", "/api/openroster/schedule/auto", (e) => {
     employees.forEach((emp) => {
       if (emp.getString("pay_type") === "salary") return
       if (shift.getString("location") && emp.getString("location") && emp.getString("location") !== shift.getString("location")) return
+      const certError = h.certificationError(e.app, emp.id, shift.getString("position"))
+      if (certError) { reason = certError; return }
 
       const off = timeOffFor(emp.id).some((r) => {
         return shiftDate >= h.isoDate(r.getString("start_date")) && shiftDate <= h.isoDate(r.getString("end_date"))

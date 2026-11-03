@@ -247,10 +247,46 @@ function buildStub(company, employee, hours, rules, periodDays) {
   }
 }
 
+function certificationError(app, employeeId, positionId) {
+  if (!positionId) return null
+  let position = null
+  try { position = app.findRecordById("positions", positionId) } catch (err) { return null }
+  let required = []
+  try {
+    const value = position.get("required_certifications")
+    required = Array.isArray(value) ? value : []
+  } catch (err) {}
+  if (!required.length) return null
+  const today = new Date().toISOString().slice(0, 10)
+
+  for (const certificationId of required) {
+    const rows = app.findRecordsByFilter(
+      "employee_certifications",
+      "employee = {:employee} && certification = {:certification}",
+      "-expires_at",
+      10,
+      0,
+      { employee: employeeId, certification: certificationId }
+    )
+    const valid = rows.some((row) => {
+      const expires = row.getString("expires_at")
+      return !expires || expires.slice(0, 10) >= today
+    })
+    if (!valid) {
+      let name = "certification"
+      try { name = app.findRecordById("certifications", certificationId).getString("name") } catch (err) {}
+      return "Missing or expired certification: " + name + "."
+    }
+  }
+  return null
+}
+
 function shiftAssignmentError(app, record, employeeId, ignoreId) {
   const employee = app.findRecordById("employees", employeeId)
   const company = app.findRecordById("companies", employee.getString("company"))
   const date = shiftDate(record)
+  const certError = certificationError(app, employeeId, record.getString("position"))
+  if (certError) return certError
 
   const leave = approvedTimeOff(app, employeeId, date, date)
   if (leave.length > 0) return "This employee has approved time off on that day."
@@ -699,6 +735,7 @@ module.exports = {
   approvedTimeOff: approvedTimeOff,
   overlaps: overlaps,
   shiftDate: shiftDate,
+  certificationError: certificationError,
   shiftAssignmentError: shiftAssignmentError,
   weekStartDate: weekStartDate,
   weekKey: weekKey,

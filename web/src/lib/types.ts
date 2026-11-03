@@ -61,6 +61,24 @@ export interface Position extends BaseRecord {
   name: string;
   default_rate?: number;
   active?: boolean;
+  required_certifications?: string[];
+}
+
+export interface Certification extends BaseRecord {
+  company: string;
+  name: string;
+  description?: string;
+  active?: boolean;
+}
+
+export interface EmployeeCertification extends BaseRecord {
+  company: string;
+  employee: string;
+  certification: string;
+  issued_at?: string;
+  expires_at?: string;
+  note?: string;
+  expand?: { certification?: Certification };
 }
 
 export interface Employee extends BaseRecord {

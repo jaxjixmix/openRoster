@@ -363,6 +363,47 @@ async function main() {
     assert.equal(samPins.data.items.length, 0, "employees cannot read kiosk PIN");
     console.log("PASS kiosk PIN access");
 
+    const cert = await request("/api/collections/certifications/records", {
+      method: "POST",
+      token,
+      body: { company: bootstrap.data.company.id, name: "Food Safety", active: true },
+    });
+    const certPosition = await request("/api/collections/positions/records", {
+      method: "POST",
+      token,
+      body: { company: bootstrap.data.company.id, department: sam.department, name: "Certified Cook", required_certifications: [cert.data.id], active: true },
+    });
+    const certWeek = new Date(new Date(weekStart + "T00:00:00Z").getTime() + 56 * 86400000).toISOString().slice(0, 10);
+    const certShiftBody = {
+      company: bootstrap.data.company.id,
+      location: sam.location,
+      department: sam.department,
+      position: certPosition.data.id,
+      employee: sam.id,
+      starts_at: `${certWeek} 17:00:00.000Z`,
+      ends_at: `${certWeek} 21:00:00.000Z`,
+      local_date: `${certWeek} 00:00:00.000Z`,
+      local_start: "10:00",
+      local_end: "14:00",
+      status: "published",
+    };
+    const missingCert = await request("/api/collections/shifts/records", { method: "POST", token, body: certShiftBody });
+    assert.equal(missingCert.status, 400, "missing certification blocks assignment");
+    await request("/api/collections/employee_certifications/records", {
+      method: "POST",
+      token,
+      body: {
+        company: bootstrap.data.company.id,
+        employee: sam.id,
+        certification: cert.data.id,
+        issued_at: `${weekStart} 00:00:00.000Z`,
+        expires_at: `${new Date().getUTCFullYear() + 2}-12-31 00:00:00.000Z`,
+      },
+    });
+    const withCert = await request("/api/collections/shifts/records", { method: "POST", token, body: certShiftBody });
+    assert.equal(withCert.status, 200, "certification allows assignment");
+    console.log("PASS certifications");
+
     const blackout = await request("/api/collections/blackout_dates/records", {
       method: "POST",
       token,
