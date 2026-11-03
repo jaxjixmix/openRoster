@@ -126,6 +126,7 @@ The PocketBase dashboard is at http://localhost:8097/_/; keep it private.
 - **Backups:** `make backup`, then read [`docs/BACKUP.md`](docs/BACKUP.md). Restore is scripted and should be tested quarterly.
 - **Containers:** both images run as non-root; the web container has a healthcheck.
 - **Upgrades:** see [`docs/UPGRADE.md`](docs/UPGRADE.md).
+- **Retention:** see [`docs/RETENTION.md`](docs/RETENTION.md); `make retention` dry-runs, `make retention-apply` deletes.
 - **API:** custom routes are documented in [`docs/API.md`](docs/API.md).
 - **Monitoring:** see [`docs/MONITORING.md`](docs/MONITORING.md) for health checks, logs and optional Sentry/GlitchTip.
 - **Payroll model:** see [`docs/PAYROLL.md`](docs/PAYROLL.md).

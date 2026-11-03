@@ -198,7 +198,21 @@ async function main() {
     assert.ok(readAll.data.updated > 0);
     const readAllAgain = await request("/api/openroster/notifications/read-all", { method: "POST", token: samLogin.data.token });
     assert.equal(readAllAgain.data.updated, 0);
-    console.log("PASS in-app notification and read-all");
+    const retention = spawnSync(process.execPath, [path.join(ROOT, "scripts/retention.mjs"), "--apply"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PB_URL: BASE,
+        PB_SUPERUSER_PASSWORD: SUPER_PASSWORD,
+        RETENTION_NOTIFICATION_DAYS: "0",
+      },
+    });
+    assert.equal(retention.status, 0, retention.stderr || retention.stdout);
+    assert.match(retention.stdout, /Deleted [1-9]/);
+    const afterRetention = await request("/api/collections/notifications/records?perPage=1", { token: samLogin.data.token });
+    assert.equal(afterRetention.data.totalItems, 0);
+    console.log("PASS in-app notification, read-all and retention");
 
     const swapDate = new Date(new Date(weekStart + "T00:00:00Z").getTime() + 35 * 86400000).toISOString().slice(0, 10);
     const swapShift = await request("/api/collections/shifts/records", {
