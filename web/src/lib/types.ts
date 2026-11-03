@@ -165,6 +165,8 @@ export interface Punch extends BaseRecord {
   type: "in" | "out" | "break_start" | "break_end";
   punched_at: string;
   source?: string;
+  client_id?: string;
+  queued?: boolean;
   lat?: number;
   lng?: number;
   note?: string;

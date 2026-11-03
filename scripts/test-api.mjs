@@ -371,6 +371,62 @@ async function main() {
     assert.equal(breakOut.status, 200, "clock out");
     console.log("PASS break punches");
 
+    const offlineClient = `offline-test-${Date.now()}`;
+    const offlineIn = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: {
+        employee: priya.id,
+        type: "in",
+        source: "offline",
+        offset_minutes: -480,
+        client_id: offlineClient,
+        punched_at: new Date(Date.now() + 1000).toISOString(),
+      },
+    });
+    assert.equal(offlineIn.status, 200, "offline punch accepted");
+    assert.equal(offlineIn.data.punch.client_id, offlineClient);
+    assert.equal(offlineIn.data.punch.source, "offline");
+    const duplicateOffline = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: {
+        employee: priya.id,
+        type: "in",
+        offset_minutes: -480,
+        client_id: offlineClient,
+        punched_at: new Date(Date.now() + 1000).toISOString(),
+      },
+    });
+    assert.equal(duplicateOffline.status, 200);
+    assert.equal(duplicateOffline.data.duplicate, true);
+    assert.equal(duplicateOffline.data.punch.id, offlineIn.data.punch.id);
+    const staleOffline = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: {
+        employee: priya.id,
+        type: "out",
+        offset_minutes: -480,
+        client_id: `${offlineClient}-stale`,
+        punched_at: new Date(Date.now() - 96 * 3600 * 1000).toISOString(),
+      },
+    });
+    assert.equal(staleOffline.status, 422, "stale offline punch rejected");
+    const offlineOut = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: {
+        employee: priya.id,
+        type: "out",
+        offset_minutes: -480,
+        client_id: `${offlineClient}-out`,
+        punched_at: new Date(Date.now() + 2000).toISOString(),
+      },
+    });
+    assert.equal(offlineOut.status, 200, "offline clock out");
+    console.log("PASS offline punch idempotency");
+
     await request("/api/collections/kiosk_pins/records", {
       method: "POST",
       token,

@@ -76,7 +76,7 @@ async function main() {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => {
-      if (message.type() === "error") errors.push(message.text());
+      if (message.type() === "error" && !message.text().includes("ERR_INTERNET_DISCONNECTED")) errors.push(message.text());
     });
 
     await page.goto(`${WEB_URL}/login`, { waitUntil: "networkidle" });
@@ -174,6 +174,25 @@ async function main() {
     assert.match(await page.locator("h1").first().innerText(), /Sam Rivera/);
     assert.match(await page.locator("main").innerText(), /Weekly availability/);
     console.log("PASS employee self-service");
+
+    await page.evaluate(() => localStorage.removeItem("openroster.offline-punches.v1"));
+    await page.goto(`${WEB_URL}/timeclock`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Clock in" }).waitFor({ timeout: 10000 });
+    await page.context().setOffline(true);
+    await page.getByRole("button", { name: "Clock in" }).click();
+    await page.waitForTimeout(700);
+    assert.match(await page.locator("main").innerText(), /Offline|waiting to sync/i);
+    const queued = await page.evaluate(() => JSON.parse(localStorage.getItem("openroster.offline-punches.v1") || "[]"));
+    assert.equal(queued.length, 1, "offline punch queued");
+    await page.context().setOffline(false);
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem("openroster.offline-punches.v1") || "[]").length === 0, null, { timeout: 15000 });
+    await page.getByRole("button", { name: "Clock out" }).waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: "Clock out" }).click();
+    await page.getByRole("button", { name: "Clock in" }).waitFor({ timeout: 10000 });
+    const manifest = await fetch(`${WEB_URL}/manifest.webmanifest`);
+    assert.equal(manifest.status, 200);
+    assert.match(await manifest.text(), /OpenRoster/);
+    console.log("PASS offline clock queue and PWA manifest");
 
     assert.deepEqual([...new Set(errors)], []);
     console.log("ALL UI TESTS PASSED");

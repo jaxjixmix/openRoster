@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, Coffee, LogIn, LogOut, MapPin, RefreshCw } from "lucide-react";
+import { Clock3, Coffee, LogIn, LogOut, MapPin, RefreshCw, WifiOff } from "lucide-react";
 import { pb } from "@/lib/pb";
 import { getPunchesBetween, errorMessage } from "@/lib/data";
-import { addDaysStr, formatTime, toDate, todayIn, toUtcIso, tzOffsetForDate } from "@/lib/dates";
+import { addDaysStr, dateInTz, formatTime, toDate, todayIn, toUtcIso, tzOffsetForDate } from "@/lib/dates";
+import { enqueuePunch, getQueuedPunches, removeQueuedPunch, type QueuedPunchType } from "@/lib/offline-punches";
 import type { Punch } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { Button, ErrorNote } from "@/components/ui";
@@ -37,6 +38,27 @@ export function ClockCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [online, setOnline] = useState(true);
+  const [queuedCount, setQueuedCount] = useState(0);
+
+  const queuedPunchesToday = useCallback((): Punch[] => {
+    if (!targetId) return [];
+    const todayKey = todayIn(tz);
+    return getQueuedPunches(targetId)
+      .filter((item) => dateInTz(item.punched_at, tz) === todayKey)
+      .map((item): Punch => ({
+        id: `offline:${item.id}`,
+        collectionId: "",
+        collectionName: "punches",
+        created: "",
+        updated: "",
+        employee: item.employee,
+        type: item.type,
+        punched_at: item.punched_at,
+        source: "offline",
+        queued: true,
+      }));
+  }, [targetId, tz]);
 
   const load = useCallback(async () => {
     if (!targetId) return;
@@ -45,18 +67,83 @@ export function ClockCard({
       const start = toUtcIso(today, "00:00", tz);
       const end = toUtcIso(addDaysStr(today, 1), "00:00", tz);
       const rows = await getPunchesBetween(targetId, start, end);
-      setPunches(rows.sort((a, b) => +toDate(a.punched_at) - +toDate(b.punched_at)));
+      const queued = queuedPunchesToday();
+      setPunches([...rows, ...queued].sort((a, b) => +toDate(a.punched_at) - +toDate(b.punched_at)));
+      setQueuedCount(getQueuedPunches(targetId).length);
       setError("");
     } catch (err) {
-      setError(errorMessage(err));
+      const queued = queuedPunchesToday();
+      setPunches(queued.sort((a, b) => +toDate(a.punched_at) - +toDate(b.punched_at)));
+      setQueuedCount(getQueuedPunches(targetId).length);
+      setError(navigator.onLine ? errorMessage(err) : "");
     } finally {
       setLoading(false);
     }
-  }, [targetId, tz]);
+  }, [targetId, tz, queuedPunchesToday]);
+
+  const sync = useCallback(async () => {
+    if (!targetId) return;
+    const pending = getQueuedPunches(targetId);
+    if (!pending.length) {
+      setQueuedCount(0);
+      return;
+    }
+    let synced = 0;
+    let rejected = 0;
+    for (const item of pending) {
+      try {
+        await pb.send("/api/openroster/clock", {
+          method: "POST",
+          body: {
+            type: item.type,
+            employee: employeeId || undefined,
+            source: "offline",
+            offset_minutes: item.offset_minutes,
+            lat: item.lat,
+            lng: item.lng,
+            punched_at: item.punched_at,
+            client_id: item.id,
+          },
+        });
+        removeQueuedPunch(item.id);
+        synced++;
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 400 || status === 409 || status === 422) {
+          removeQueuedPunch(item.id);
+          rejected++;
+        } else {
+          break;
+        }
+      }
+    }
+    setQueuedCount(getQueuedPunches(targetId).length);
+    if (synced) {
+      toast(`${synced} offline punch${synced === 1 ? "" : "es"} synced.`);
+      await load();
+      onChanged?.();
+    }
+    if (rejected) setError(`${rejected} offline punch${rejected === 1 ? "" : "es"} could not be applied because the clock state changed.`);
+  }, [targetId, employeeId, load, onChanged, toast]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    function update() {
+      setOnline(navigator.onLine);
+      if (navigator.onLine) void sync();
+    }
+    setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    if (navigator.onLine) void sync();
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, [sync]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -129,10 +216,23 @@ export function ClockCard({
     })
   }
 
-  async function punch(type: "in" | "out" | "break_start" | "break_end") {
+  async function punch(type: QueuedPunchType) {
     setBusy(true);
     setError("");
     try {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        enqueuePunch({
+          employee: targetId!,
+          type,
+          punched_at: new Date().toISOString(),
+          offset_minutes: tzOffsetForDate(todayIn(tz), tz),
+        });
+        setOnline(false);
+        await load();
+        onChanged?.();
+        toast("Saved offline. It will sync when you reconnect.");
+        return;
+      }
       const coords = await position()
       await pb.send("/api/openroster/clock", {
         method: "POST",
@@ -146,6 +246,7 @@ export function ClockCard({
         },
       });
       await load();
+      setQueuedCount(getQueuedPunches(targetId).length);
       onChanged?.();
       toast(
         type === "in" ? "Clocked in."
@@ -206,6 +307,16 @@ export function ClockCard({
       </div>
 
       <div className={compact ? "mt-4" : "px-5 py-4"}>
+        {(!online || queuedCount > 0) && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-[11px] text-ink">
+            <WifiOff className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              {online
+                ? `${queuedCount} punch${queuedCount === 1 ? "" : "es"} waiting to sync.`
+                : "Offline. Punches are saved on this device and sync when you reconnect."}
+            </span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {!clockedIn && (
             <Button variant="accent" className="flex-1" size="lg" loading={busy} onClick={() => punch("in")}>
@@ -243,6 +354,7 @@ export function ClockCard({
                   <span className="flex items-center gap-1.5 text-muted">
                     {p.type === "in" ? <LogIn className="size-3 text-sage" /> : p.type === "break_start" ? <Coffee className="size-3 text-gold" /> : p.type === "break_end" ? <Coffee className="size-3 text-sage" /> : <LogOut className="size-3 text-accent" />}
                     {p.type === "in" ? "In" : p.type === "out" ? "Out" : p.type === "break_start" ? "Break" : "Break end"}
+                    {p.queued && <span className="rounded bg-gold/20 px-1 text-[9px] uppercase tracking-wide text-ink">queued</span>}
                     {p.expand?.location && (
                       <span className="hidden items-center gap-0.5 text-[10px] text-muted/70 sm:flex">
                         <MapPin className="size-2.5" />

@@ -14,9 +14,42 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
   if (!employee) employee = h.employeeForUser(e.app, e.auth.id)
   if (!employee) return h.bad(e, "No employee profile is linked to this account.", 404)
 
+  const clientId = String(body.client_id || "").slice(0, 64)
+  if (clientId) {
+    const existing = e.app.findRecordsByFilter(
+      "punches",
+      "employee = {:employee} && client_id = {:clientId}",
+      "",
+      1,
+      0,
+      { employee: employee.id, clientId: clientId }
+    )
+    if (existing.length) {
+      return e.json(200, {
+        punch: existing[0],
+        duplicate: true,
+        clocked_in: ["in", "break_start", "break_end"].includes(existing[0].getString("type")),
+        on_break: existing[0].getString("type") === "break_start",
+        worked_minutes: 0,
+      })
+    }
+  }
+
   const allowedTypes = ["in", "out", "break_start", "break_end"]
   if (!allowedTypes.includes(body.type)) return h.bad(e, "Unknown punch type.")
   const type = body.type
+
+  let punchedAt = new Date()
+  if (body.punched_at) {
+    if (!clientId) return h.bad(e, "A client timestamp requires a client_id.", 422)
+    const parsed = Date.parse(body.punched_at)
+    const now = Date.now()
+    if (isNaN(parsed) || parsed > now + 120000 || parsed < now - 72 * 3600 * 1000) {
+      return h.bad(e, "Offline punch time is out of range.", 422)
+    }
+    punchedAt = new Date(parsed)
+  }
+
   const punches = e.app.findRecordsByFilter(
     "punches",
     "employee = {:employee}",
@@ -65,15 +98,17 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
   if (body.location) punch.set("location", body.location)
   else if (employee.getString("location")) punch.set("location", employee.getString("location"))
   punch.set("type", type)
-  punch.set("punched_at", new Date().toISOString())
+  punch.set("punched_at", punchedAt.toISOString())
+  if (clientId) punch.set("client_id", clientId)
   punch.set("source", body.source || "web")
+  if (clientId && body.punched_at) punch.set("note", "Offline punch; timestamp supplied by the device.")
   if (body.lat) punch.set("lat", body.lat)
   if (body.lng) punch.set("lng", body.lng)
   punch.set("created_by", e.auth.id)
   e.app.save(punch)
 
   const offsetMinutes = Number(body.offset_minutes || 0)
-  const localDay = new Date(Date.now() + offsetMinutes * 60000).toISOString().slice(0, 10)
+  const localDay = new Date(punchedAt.getTime() + offsetMinutes * 60000).toISOString().slice(0, 10)
   const dayStart = new Date(Date.parse(localDay + "T00:00:00Z") - offsetMinutes * 60000).toISOString()
   const dayEnd = new Date(Date.parse(localDay + "T00:00:00Z") + 86400000 - offsetMinutes * 60000).toISOString()
   const todays = e.app.findRecordsByFilter(
