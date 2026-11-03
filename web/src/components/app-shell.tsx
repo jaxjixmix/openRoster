@@ -34,6 +34,7 @@ const NAV = [
   { href: "/timeclock", label: "Time Clock", icon: Clock3, manager: false },
   { href: "/timesheets", label: "Timesheets", icon: ClipboardCheck, manager: false },
   { href: "/requests", label: "Time Off", icon: Inbox, manager: false },
+  { href: "/calendar", label: "Time-off calendar", icon: CalendarClock, manager: false },
   { href: "/swaps", label: "Swaps", icon: Repeat, manager: false },
   { href: "/me", label: "My profile", icon: CircleUserRound, manager: false },
   { href: "/people", label: "People", icon: Users, manager: true },

@@ -20,7 +20,7 @@ OpenRoster is a **working alpha**. Current release: **v0.3.0-alpha**. The delive
 
 - [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
 - [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — complete: pay periods, PTO ledger, printable stubs, locale, pay-period clock, DST tests, breaks/rounding, geofence, punch corrections, kiosk PIN, currency/CSV.
-- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service, open-shift claiming, notifications/preferences, copy week, swaps, recurring templates, labor budget. Remaining: certifications, time-off calendar/blackouts, expiry reminders.
+- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service, open-shift claiming, notifications/preferences, copy week, swaps, recurring templates, labor budget, time-off calendar/blackouts. Remaining: certifications, expiry reminders.
 - [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs and CSV. Remaining: monitoring, type generation, i18n/PWA, accessibility pass.
 - [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
 
@@ -37,7 +37,7 @@ OpenRoster is a **working alpha**. Current release: **v0.3.0-alpha**. The delive
 - **Timesheets** — generated from punches (scheduled hours are a fallback), daily and weekly overtime, PTO, approve individually or in bulk. Approved sheets are locked.
 - **Payroll** — preview and draft runs from approved timesheets, configurable percent/fixed rules, per-stub breakdown, pay history, draft → approved → paid → voided, no destructive deletes.
 - **People** — profiles, pay, availability, documents, PTO ledger, recent punches, archive/restore.
-- **Time off** — requests, approve/deny queue, balances.
+- **Time off** — requests, approve/deny queue, balances, month calendar, blackout dates and coverage-conflict warnings.
 - **Reports** — scheduled vs actual hours, labor by department, coverage, overtime watch.
 - **Notifications** — in-app bell with optional email delivery through PocketBase mail settings.
 - **Exports** — CSV for timesheets, payroll preview, people and schedules.

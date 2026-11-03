@@ -130,6 +130,11 @@ async function main() {
     assert.match(await page.locator("main").innerText(), /Print \/ Save PDF/);
     console.log("PASS printable pay stub");
 
+    await page.goto(`${WEB_URL}/calendar`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(700);
+    assert.equal(await page.locator("h1").first().innerText(), "Time-off calendar");
+    console.log("PASS time-off calendar");
+
     await page.goto(`${WEB_URL}/templates`, { waitUntil: "networkidle" });
     await page.waitForTimeout(700);
     assert.equal(await page.locator("h1").first().innerText(), "Shift templates");

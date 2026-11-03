@@ -44,6 +44,10 @@ curl -s http://127.0.0.1:8097/api/openroster/bootstrap \
 - Pay periods are generated from `companies.pay_frequency`; pay date defaults to period end + 5 days.
 - Payroll is a preview/export tool, not a tax engine.
 
+## Time off and blackouts
+
+`blackout_dates` is company-scoped and readable by authenticated staff; managers manage records. The month calendar (`/calendar`) combines leave, blackouts and scheduled-shift conflicts.
+
 ## Notifications
 
 `notifications` is a normal PocketBase collection. Each record belongs to one `user`; list/view/update rules only expose the owner's records. `users.notification_prefs` stores `{ in_app: boolean, email: boolean }`. In-app delivery is always written for eligible events; email is opt-in and uses PocketBase mail settings.

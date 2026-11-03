@@ -1,6 +1,7 @@
 import { pb } from "./pb";
 import type {
   Availability,
+  BlackoutDate,
   Employee,
   Holiday,
   Location,
@@ -146,6 +147,13 @@ export async function getAvailability(employeeId: string): Promise<Availability[
   return pb.collection("availability").getFullList<Availability>({
     filter: pb.filter("employee = {:employee}", { employee: employeeId }),
     sort: "weekday,start_time",
+  });
+}
+
+export async function getBlackoutDates(): Promise<BlackoutDate[]> {
+  return pb.collection("blackout_dates").getFullList<BlackoutDate>({
+    filter: "active != false",
+    sort: "start_date",
   });
 }
 

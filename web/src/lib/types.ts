@@ -211,6 +211,15 @@ export interface PayRule extends BaseRecord {
   active?: boolean;
 }
 
+export interface BlackoutDate extends BaseRecord {
+  company: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  note?: string;
+  active?: boolean;
+}
+
 export interface KioskPin extends BaseRecord {
   company: string;
   pin: string;

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarPlus, Check, Inbox, X } from "lucide-react";
 import { pb } from "@/lib/pb";
 import { useAuth } from "@/lib/auth";
-import { errorMessage, getEmployees, getTimeOff } from "@/lib/data";
-import type { Employee, TimeOffRequest } from "@/lib/types";
+import { errorMessage, getBlackoutDates, getEmployees, getTimeOff } from "@/lib/data";
+import type { BlackoutDate, Employee, TimeOffRequest } from "@/lib/types";
 import { formatDate } from "@/lib/dates";
 import { fullName, hours, titleCase } from "@/lib/format";
 import {
@@ -30,6 +30,7 @@ export default function RequestsPage() {
   const { user, employee, isManager } = useAuth();
   const toast = useToast();
   const [requests, setRequests] = useState<TimeOffRequest[]>([]);
+  const [blackouts, setBlackouts] = useState<BlackoutDate[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tab, setTab] = useState<"pending" | "approved" | "denied" | "all">("pending");
   const [loading, setLoading] = useState(true);
@@ -48,12 +49,14 @@ export default function RequestsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [rows, emps] = await Promise.all([
+      const [rows, emps, blackoutRows] = await Promise.all([
         getTimeOff(isManager ? {} : { employee: employee?.id }),
         isManager ? getEmployees() : Promise.resolve([]),
+        getBlackoutDates(),
       ]);
       setRequests(rows);
       setEmployees(emps);
+      setBlackouts(blackoutRows);
       setError("");
     } catch (err) {
       setError(errorMessage(err));
@@ -69,6 +72,13 @@ export default function RequestsPage() {
   useEffect(() => {
     if (employee && !form.employee) setForm((f) => ({ ...f, employee: employee.id }));
   }, [employee, form.employee]);
+
+  const blackoutOverlap = useMemo(() => {
+    if (!form.start_date || !form.end_date) return null;
+    return blackouts.find((row) =>
+      row.start_date.slice(0, 10) <= form.end_date && row.end_date.slice(0, 10) >= form.start_date,
+    ) || null;
+  }, [blackouts, form.start_date, form.end_date]);
 
   const filtered = useMemo(
     () => (tab === "all" ? requests : requests.filter((r) => r.status === tab)),
@@ -264,6 +274,11 @@ export default function RequestsPage() {
               <Input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
             </div>
           </div>
+          {blackoutOverlap && (
+            <div className="rounded-lg border border-[#e6d4ac] bg-[#fbf2dd] px-3 py-2 text-[11px] text-[#82621c]">
+              These dates overlap a blackout: <strong>{blackoutOverlap.name}</strong>. You can still submit; a manager will decide.
+            </div>
+          )}
           <div>
             <Label>Note</Label>
             <Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Anything your manager should know." rows={3} />
