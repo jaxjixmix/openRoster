@@ -255,6 +255,39 @@ async function main() {
     assert.equal(copiedAgain.status, 409, "copy into non-empty week is blocked");
     console.log("PASS copy week");
 
+    const templateWeek = new Date(new Date(weekStart + "T00:00:00Z").getTime() + 42 * 86400000).toISOString().slice(0, 10);
+    const template = await request("/api/collections/shift_templates/records", {
+      method: "POST",
+      token,
+      body: {
+        company: bootstrap.data.company.id,
+        location: sam.location,
+        department: sam.department,
+        position: sam.position,
+        employee: sam.id,
+        weekday: String(new Date(templateWeek + "T00:00:00Z").getUTCDay()),
+        start_time: "09:00",
+        end_time: "12:00",
+        break_minutes: 0,
+        active: true,
+      },
+    });
+    assert.equal(template.status, 200, "template created");
+    const applied = await request("/api/openroster/shift_templates/apply", {
+      method: "POST",
+      token,
+      body: { week_start: templateWeek, offsets },
+    });
+    assert.equal(applied.status, 200, "template applied");
+    assert.equal(applied.data.created, 1);
+    const reapplied = await request("/api/openroster/shift_templates/apply", {
+      method: "POST",
+      token,
+      body: { week_start: templateWeek, offsets },
+    });
+    assert.equal(reapplied.data.created, 0, "template is idempotent");
+    console.log("PASS shift templates");
+
     const auto = await request("/api/openroster/schedule/auto", {
       method: "POST",
       token,

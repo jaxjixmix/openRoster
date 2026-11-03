@@ -129,6 +129,11 @@ async function main() {
     assert.match(await page.locator("main").innerText(), /Print \/ Save PDF/);
     console.log("PASS printable pay stub");
 
+    await page.goto(`${WEB_URL}/templates`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(700);
+    assert.equal(await page.locator("h1").first().innerText(), "Shift templates");
+    console.log("PASS templates page");
+
     await page.evaluate(() => localStorage.clear());
     await page.goto(`${WEB_URL}/login`, { waitUntil: "networkidle" });
     await page.fill("#email", "sam@harborhearth.co");

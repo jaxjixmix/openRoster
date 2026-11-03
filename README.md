@@ -20,7 +20,7 @@ OpenRoster is a **working alpha**. Current release: **v0.3.0-alpha**. The delive
 
 - [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
 - [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — complete: pay periods, PTO ledger, printable stubs, locale, pay-period clock, DST tests, breaks/rounding, geofence, punch corrections, kiosk PIN, currency/CSV.
-- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service, open-shift claiming, notifications/preferences, copy week, shift swaps. Remaining: recurring shifts, labor budget, certifications, time-off calendar, expiry reminders.
+- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service, open-shift claiming, notifications/preferences, copy week, shift swaps, recurring templates. Remaining: labor budget, certifications, time-off calendar, expiry reminders.
 - [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs and CSV. Remaining: monitoring, type generation, i18n/PWA, accessibility pass.
 - [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
 
@@ -31,7 +31,7 @@ OpenRoster is a **working alpha**. Current release: **v0.3.0-alpha**. The delive
 - **PTO ledger** — carryover, accrual, approved usage and manual adjustments; balances recalculate from the ledger.
 - **Self-service** — staff profile, availability editing, PTO history and time-off requests.
 - **Open shifts** — staff can see published open shifts and claim them; the server checks leave, availability and weekly hours.
-- **Schedule** — week board and hour-by-hour timeline, location filter, draft/publish, copy week, shift swaps, realtime updates, overlap validation, manual leave/hour-cap checks.
+- **Schedule** — week board and hour-by-hour timeline, location filter, draft/publish, copy week, shift swaps, recurring shift templates, realtime updates, overlap validation, manual leave/hour-cap checks.
 - **Auto-fill** — assigns open shifts using availability, approved time off, existing shifts, weekly hour caps and position fit. It leaves genuinely uncovered shifts open instead of guessing.
 - **Time clock** — clock in/out, break start/end, optional rounding, PIN-locked kiosk mode, live “on the clock” list, duplicate-punch and backdating protection.
 - **Timesheets** — generated from punches (scheduled hours are a fallback), daily and weekly overtime, PTO, approve individually or in bulk. Approved sheets are locked.

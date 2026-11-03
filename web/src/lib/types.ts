@@ -94,6 +94,26 @@ export interface Employee extends BaseRecord {
   };
 }
 
+export interface ShiftTemplate extends BaseRecord {
+  company: string;
+  location?: string;
+  department?: string;
+  position?: string;
+  employee?: string;
+  weekday: string;
+  start_time: string;
+  end_time: string;
+  break_minutes?: number;
+  active?: boolean;
+  notes?: string;
+  expand?: {
+    location?: Location;
+    department?: Department;
+    position?: Position;
+    employee?: Employee;
+  };
+}
+
 export interface Shift extends BaseRecord {
   company: string;
   location?: string;
@@ -105,6 +125,7 @@ export interface Shift extends BaseRecord {
   local_date?: string;
   local_start?: string;
   local_end?: string;
+  template?: string;
   break_minutes?: number;
   status: "draft" | "published";
   source?: "manual" | "auto" | "swap";

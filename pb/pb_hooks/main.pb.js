@@ -398,6 +398,91 @@ routerAdd("POST", "/api/openroster/timesheets/generate", (e) => {
   return e.json(200, { sheets: sheets, period_start: startDate, period_end: endDate })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ apply shift templates
+routerAdd("POST", "/api/openroster/shift_templates/apply", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  const weekStart = body.week_start
+  if (!weekStart) return h.bad(e, "week_start is required.")
+  const company = h.companyOf(e.app, e.auth)
+  if (!company) return h.bad(e, "Company not configured.", 404)
+  const templates = e.app.findRecordsByFilter("shift_templates", "company = {:company} && active = true", "weekday,start_time", 500, 0, { company: company.id })
+  const offsets = Array.isArray(body.offsets) ? body.offsets : []
+
+  let created = 0
+  const skipped = []
+  e.app.runInTransaction((txApp) => {
+    for (let day = 0; day < 7; day++) {
+      const localDate = h.addDays(weekStart, day)
+      const weekday = new Date(localDate + "T00:00:00Z").getUTCDay()
+      const offset = Number(offsets[day] || 0)
+      templates.forEach((template) => {
+        if (parseInt(template.getString("weekday"), 10) !== weekday) return
+        try {
+          txApp.findFirstRecordByFilter(
+            "shifts",
+            "template = {:template} && local_date = {:date}",
+            { template: template.id, date: localDate + " 00:00:00.000Z" }
+          )
+          return
+        } catch (err) {}
+
+        const start = template.getString("start_time")
+        const end = template.getString("end_time")
+        if (!start || !end) {
+          skipped.push({ template: template.id, date: localDate, reason: "Missing start or end time" })
+          return
+        }
+        const endDate = end <= start ? h.addDays(localDate, 1) : localDate
+        const starts = new Date(Date.parse(localDate + "T" + start + ":00Z") - offset * 60000).toISOString()
+        const ends = new Date(Date.parse(endDate + "T" + end + ":00Z") - offset * 60000).toISOString()
+
+        const record = new Record(txApp.findCollectionByNameOrId("shifts"))
+        record.set("company", company.id)
+        record.set("template", template.id)
+        record.set("location", template.getString("location"))
+        record.set("department", template.getString("department"))
+        record.set("position", template.getString("position"))
+        record.set("employee", template.getString("employee"))
+        record.set("starts_at", starts)
+        record.set("ends_at", ends)
+        record.set("local_date", localDate + " 00:00:00.000Z")
+        record.set("local_start", start)
+        record.set("local_end", end)
+        record.set("break_minutes", template.getFloat("break_minutes"))
+        record.set("status", "draft")
+        record.set("source", "manual")
+        record.set("notes", template.getString("notes"))
+
+        if (record.getString("employee")) {
+          const assignmentError = h.shiftAssignmentError(txApp, record, record.getString("employee"), "")
+          if (assignmentError) {
+            skipped.push({ template: template.id, date: localDate, reason: assignmentError })
+            return
+          }
+          const clash = txApp.findRecordsByFilter(
+            "shifts",
+            "employee = {:employee} && starts_at < {:end} && ends_at > {:start}",
+            "",
+            1,
+            0,
+            { employee: record.getString("employee"), start: starts, end: ends }
+          )
+          if (clash.length) {
+            skipped.push({ template: template.id, date: localDate, reason: "Overlapping shift" })
+            return
+          }
+        }
+        txApp.save(record)
+        created++
+      })
+    }
+  })
+
+  return e.json(200, { created: created, skipped: skipped })
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ copy a week
 routerAdd("POST", "/api/openroster/schedule/copy", (e) => {
   const h = require(`${__hooks}/lib.js`)

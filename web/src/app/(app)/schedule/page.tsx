@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CalendarClock,
   CalendarDays,
   CalendarRange,
   ChevronLeft,
@@ -241,6 +242,27 @@ export default function SchedulePage() {
     }
   }
 
+  async function applyTemplates() {
+    setBusy(true)
+    try {
+      const result = await pb.send<{ created: number; skipped: Array<{ reason: string }> }>("/api/openroster/shift_templates/apply", {
+        method: "POST",
+        body: { week_start: start, offsets: tzOffsets(start, tz) },
+      })
+      await load()
+      toast(
+        result.created
+          ? `Generated ${result.created} draft shifts from templates${result.skipped.length ? `; skipped ${result.skipped.length}` : ""}.`
+          : "No new template shifts were generated.",
+        result.skipped.length ? "info" : "success",
+      )
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function copyWeek() {
     if (!isManager) return
     const target = weekStart(copyTarget, Number(company?.week_start ?? "1"))
@@ -304,6 +326,9 @@ export default function SchedulePage() {
               <Button variant="outline" size="sm" onClick={autoFill} loading={busy}>
                 {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
                 Auto-fill
+              </Button>
+              <Button variant="outline" size="sm" onClick={applyTemplates} loading={busy}>
+                <CalendarClock className="size-3.5" /> Apply templates
               </Button>
               <Button
                 variant="outline"

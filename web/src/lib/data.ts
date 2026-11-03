@@ -13,6 +13,7 @@ import type {
   Punch,
   Shift,
   ShiftSwap,
+  ShiftTemplate,
   TimeOffRequest,
   Timesheet,
   TimesheetEntry,
@@ -144,6 +145,13 @@ export async function getTimesheetEntries(timesheetId: string): Promise<Timeshee
 export async function getAvailability(employeeId: string): Promise<Availability[]> {
   return pb.collection("availability").getFullList<Availability>({
     filter: pb.filter("employee = {:employee}", { employee: employeeId }),
+    sort: "weekday,start_time",
+  });
+}
+
+export async function getShiftTemplates(): Promise<ShiftTemplate[]> {
+  return pb.collection("shift_templates").getFullList<ShiftTemplate>({
+    expand: "location,department,position,employee",
     sort: "weekday,start_time",
   });
 }
