@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   Building2,
+  Download,
   CalendarDays,
   Check,
   MapPin,
@@ -31,6 +32,7 @@ import {
 import type { Certification, Department, Holiday, Location, PayRule, Position, User } from "@/lib/types";
 import { formatDate, toDate } from "@/lib/dates";
 import { roleLabel, titleCase } from "@/lib/format";
+import { downloadCsv } from "@/lib/csv";
 import { useMoney } from "@/lib/currency";
 import {
   Badge,
@@ -495,7 +497,27 @@ export default function SettingsPage() {
                 <p className="text-sm font-semibold">Activity log</p>
                 <p className="mt-0.5 text-xs text-muted">Shifts, people and payroll changes.</p>
               </div>
-              <Activity className="size-4 text-muted" />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadCsv("audit-log.csv", activity.map((row) => {
+                    const record = row as { id: string; action?: string; collection?: string; summary?: string; at?: string; expand?: { actor?: User } };
+                    return {
+                      at: record.at || "",
+                      actor: record.expand?.actor?.name || "System",
+                      action: record.action || "",
+                      collection: record.collection || "",
+                      summary: record.summary || "",
+                      record_id: record.id,
+                    };
+                  }))}
+                  disabled={!activity.length}
+                >
+                  <Download className="size-3.5" /> Export CSV
+                </Button>
+                <Activity className="size-4 text-muted" />
+              </div>
             </div>
             <div className="divide-y divide-line">
               {activity.map((row) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, Coffee, Lock, LogIn, LogOut, MapPin, Pencil, Unlock, Users } from "lucide-react";
+import { Clock3, Coffee, Download, Lock, LogIn, LogOut, MapPin, Pencil, Unlock, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { pb } from "@/lib/pb";
 import { errorMessage, getEmployees, getKioskPin, getPunchesBetween, getShiftsBetween, getTimesheets } from "@/lib/data";
@@ -22,6 +22,7 @@ import { Avatar, Badge, Button, Input, Label, Modal, PageHeader, Select, Spinner
 import { ClockCard } from "@/components/clock-card";
 import { ShiftRow } from "@/components/shift-row";
 import { useToast } from "@/lib/toast";
+import { downloadCsv } from "@/lib/csv";
 
 export default function TimeClockPage() {
   const { company, employee, isManager } = useAuth();
@@ -192,6 +193,23 @@ export default function TimeClockPage() {
             ? "Clock people in and out, and keep an eye on the floor in real time."
             : "Clock in when you start, clock out when you're done. Hours flow into your timesheet."
         }
+        actions={isManager ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!punches.length}
+            onClick={() => downloadCsv(`punches-${today}.csv`, punches.map((punch) => ({
+              employee: fullName(punch.expand?.employee),
+              type: punch.type,
+              punched_at: punch.punched_at,
+              source: punch.source || "",
+              location: punch.expand?.location?.name || "",
+              note: punch.note || "",
+            })))}
+          >
+            <Download className="size-3.5" /> Export punches
+          </Button>
+        ) : undefined}
       />
 
       {error && (

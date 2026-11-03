@@ -139,6 +139,11 @@ async function main() {
     assert.match(await page.locator("main").innerText(), /Print \/ Save PDF/);
     console.log("PASS printable pay stub");
 
+    await page.goto(`${WEB_URL}/timeclock`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(700);
+    await page.getByRole("button", { name: "Export punches" }).waitFor({ timeout: 10000 });
+    console.log("PASS manager punch export");
+
     await page.goto(`${WEB_URL}/calendar`, { waitUntil: "networkidle" });
     await page.waitForTimeout(700);
     assert.equal(await page.locator("h1").first().innerText(), "Time-off calendar");

@@ -520,6 +520,28 @@ export default function PayrollPage() {
       >
         {detailRun && (
           <div>
+            <div className="mb-3 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadCsv(`pay-stubs-${detailRun.id}.csv`, detailStubs.map((stub) => ({
+                  employee: fullName(stub.expand?.employee),
+                  period_start: detailRun.period_start,
+                  period_end: detailRun.period_end,
+                  regular_hours: stub.regular_hours || 0,
+                  overtime_hours: stub.overtime_hours || 0,
+                  pto_hours: stub.pto_hours || 0,
+                  gross_pay: stub.gross_pay || 0,
+                  employee_taxes: stub.employee_taxes || 0,
+                  employee_deductions: stub.employee_deductions || 0,
+                  net_pay: stub.net_pay || 0,
+                  status: detailRun.status,
+                })))}
+                disabled={!detailStubs.length}
+              >
+                <Download className="size-3.5" /> Export stubs
+              </Button>
+            </div>
             <div className="grid grid-cols-4 gap-3 rounded-xl bg-[#f2eee3] p-4">
               {[
                 ["Gross", money(detailRun.total_gross)],

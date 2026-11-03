@@ -9,7 +9,7 @@ All routes except `status` and `setup` require `Authorization: <PocketBase auth 
 | GET | `/api/openroster/status` | public | `{ setup_required, demo_available }` |
 | POST | `/api/openroster/setup` | public once | Create company, location, admin and pay periods |
 | GET | `/api/openroster/bootstrap` | auth | Current user, employee, company, locations |
-| POST | `/api/openroster/clock` | auth | Punch with `{type: in|out|break_start|break_end, offset_minutes?, lat?, lng?}` |
+| POST | `/api/openroster/clock` | auth | Punch with `{type, offset_minutes?, lat?, lng?, client_id?, punched_at?}`; offline replay uses `client_id` + `punched_at` |
 | POST | `/api/openroster/punches/correct` | manager | Correct a punch with `{punch, punched_at, type, reason}` |
 | POST | `/api/openroster/schedule/auto` | manager | Auto-fill `{week_start, location?, offsets}` |
 | POST | `/api/openroster/schedule/copy` | manager | Copy `{from_week, to_week, from_offsets, to_offsets}` into an empty week |
@@ -25,6 +25,7 @@ All routes except `status` and `setup` require `Authorization: <PocketBase auth 
 | POST | `/api/openroster/payroll/preview` | manager | Preview `{period_start, period_end}` |
 | POST | `/api/openroster/payroll/run` | manager | Create/update draft `{period_start, period_end}` |
 | POST | `/api/openroster/payroll/status` | manager | `{run, status: approved|paid|voided, reason?}` |
+| POST | `/api/openroster/notifications/read-all` | auth | Mark every unread notification for the caller as read |
 
 ## Examples
 
@@ -36,6 +37,10 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8097/api/collections/users/auth-with-pa
 curl -s http://127.0.0.1:8097/api/openroster/bootstrap \
   -H "Authorization: $TOKEN" | jq
 ```
+
+## Offline punches
+
+Queued punches replay through `POST /api/openroster/clock` with `client_id` and `punched_at`. `client_id` makes the call idempotent; a duplicate returns `{duplicate:true}`. `punched_at` is accepted only with `client_id`, must be within 72 hours, and is flagged `source=offline` plus an audit note. Geofence checks require coordinates and cannot run while the device is offline.
 
 ## Money and time
 
