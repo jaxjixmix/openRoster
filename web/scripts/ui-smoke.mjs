@@ -107,7 +107,21 @@ async function main() {
     await page.goto(`${WEB_URL}/payroll`, { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     assert.equal(await page.locator("h1").first().innerText(), "Payroll");
-    console.log("PASS payroll");
+
+    const stubId = await page.evaluate(async (pbUrl) => {
+      const auth = JSON.parse(localStorage.getItem("pocketbase_auth") || "{}");
+      const res = await fetch(`${pbUrl}/api/collections/pay_stubs/records?perPage=1`, {
+        headers: { Authorization: auth.token },
+      });
+      const data = await res.json();
+      return data.items?.[0]?.id || "";
+    }, PB_URL);
+    assert.ok(stubId, "a pay stub exists");
+    await page.goto(`${WEB_URL}/payroll/stub/${stubId}`, { waitUntil: "networkidle" });
+    await page.getByText("Pay statement").waitFor({ timeout: 10000 });
+    assert.match(await page.locator("main").innerText(), /pay statement/i);
+    assert.match(await page.locator("main").innerText(), /Print \/ Save PDF/);
+    console.log("PASS printable pay stub");
 
     await page.evaluate(() => localStorage.clear());
     await page.goto(`${WEB_URL}/login`, { waitUntil: "networkidle" });

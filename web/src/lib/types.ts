@@ -227,7 +227,7 @@ export interface PayStub extends BaseRecord {
   employer_taxes?: number;
   net_pay?: number;
   breakdown?: PayLine[];
-  expand?: { employee?: Employee };
+  expand?: { employee?: Employee; pay_run?: PayRun };
 }
 
 export interface PayLine {

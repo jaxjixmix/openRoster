@@ -107,3 +107,9 @@ body {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+@media print {
+  body { background: #fff !important; }
+  .panel-raised, .panel { box-shadow: none !important; border-color: #d8d2c4 !important; }
+  main { max-width: none !important; padding: 0 !important; }
+}

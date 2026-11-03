@@ -150,7 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] lg:block">
+      <aside className="print:hidden fixed inset-y-0 left-0 z-40 hidden w-[248px] lg:block">
         <Sidebar />
       </aside>
 
@@ -169,8 +169,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <div className="lg:pl-[248px]">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line/80 bg-paper/90 px-4 backdrop-blur lg:hidden">
+      <div className="print:pl-0 lg:pl-[248px]">
+        <header className="print:hidden sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line/80 bg-paper/90 px-4 backdrop-blur lg:hidden">
           <button
             onClick={() => setMobileOpen(true)}
             className="rounded-lg border border-line bg-raised p-2"
@@ -188,7 +188,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-[#e6d4ac] bg-[#fbf2dd] px-3.5 py-2.5 text-[11px] leading-relaxed text-[#82621c]">
+          <div className="print:hidden mb-5 flex items-start gap-2.5 rounded-xl border border-[#e6d4ac] bg-[#fbf2dd] px-3.5 py-2.5 text-[11px] leading-relaxed text-[#82621c]">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <p>
               <strong>Alpha.</strong> Not tax-compliant. Payroll here is a configurable preview, not
