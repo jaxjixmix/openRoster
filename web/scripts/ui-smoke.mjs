@@ -109,13 +109,19 @@ async function main() {
     await page.getByTestId("schedule-view-2weeks").click();
     await page.waitForTimeout(500);
     assert.match(await page.getByTestId("range-label").innerText(), /–/);
+    assert.equal(await page.locator("[data-week-row]").count(), 2);
     await page.getByTestId("schedule-view-4weeks").click();
     await page.waitForTimeout(500);
     assert.match(await page.getByTestId("range-label").innerText(), /–/);
+    assert.equal(await page.locator("[data-week-row]").count(), 4);
     await page.getByTestId("schedule-view-month").click();
     await page.waitForTimeout(500);
     assert.match(await page.getByTestId("range-label").innerText(), /\d{4}/);
     assert.equal(await page.getByRole("button", { name: "Timeline" }).count(), 0);
+    assert.ok(await page.getByTestId("weekday-header").isVisible());
+    assert.ok(await page.getByTestId("month-grid").isVisible());
+    assert.ok(await page.locator("[data-day-cell]").count() >= 35);
+    assert.ok(await page.getByRole("button", { name: /more · view day/ }).count() > 0);
     await page.getByTestId("schedule-view-week").click();
     await page.waitForTimeout(700);
 

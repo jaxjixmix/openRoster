@@ -135,6 +135,7 @@ export default function SchedulePage() {
 
   const load = useCallback(async () => {
     if (!company) return;
+    // shortcut: one range query loads every shift, but boards render at most 4-8 per day and offer a day drill-down. If ranges routinely exceed ~5k shifts, move the day summary server-side.
     try {
       const startIso = toUtcIso(rangeStart, "00:00", tz);
       const endIso = toUtcIso(rangeEnd, "00:00", tz);
@@ -169,7 +170,7 @@ export default function SchedulePage() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsub = pb.collection("shifts").subscribe("*", () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { void load(); }, 350);
+      timer = setTimeout(() => { void load(); }, 600);
     }).catch(() => {});
     return () => {
       if (timer) clearTimeout(timer);
@@ -203,14 +204,22 @@ export default function SchedulePage() {
   const laborBudget = company?.weekly_labor_budget || 0;
   const budgetWeeks = Math.max(1, Math.ceil(days.length / 7));
   const rangeBudget = laborBudget * budgetWeeks;
-  const byDay = useMemo(
-    () =>
-      days.map((day) => ({
-        day,
-        shifts: visibleShifts.filter((s) => dateInTz(s.starts_at, tz) === day),
-      })),
-    [days, visibleShifts, tz],
-  );
+  const byDay = useMemo(() => {
+    const grouped = new Map<string, Shift[]>();
+    for (const shift of visibleShifts) {
+      const day = dateInTz(shift.starts_at, tz);
+      const list = grouped.get(day);
+      if (list) list.push(shift);
+      else grouped.set(day, [shift]);
+    }
+    return days.map((day) => ({ day, shifts: grouped.get(day) || [] }));
+  }, [days, visibleShifts, tz]);
+  const byDayMap = useMemo(() => new Map(byDay.map((entry) => [entry.day, entry.shifts])), [byDay]);
+  const weeks = useMemo(() => {
+    const groups: string[][] = [];
+    for (let index = 0; index < days.length; index += 7) groups.push(days.slice(index, index + 7));
+    return groups;
+  }, [days]);
 
   async function autoFill() {
     setBusy(true);
@@ -331,6 +340,12 @@ export default function SchedulePage() {
     setSelected(null);
     setDefaultDate(date);
     setModalOpen(true);
+  }
+
+  function openDay(day: string) {
+    setAnchor(day);
+    setRangeView("day");
+    setLayout("timeline");
   }
 
   function shiftAnchor(direction: number) {
@@ -471,6 +486,122 @@ export default function SchedulePage() {
       : rangeView === "month"
         ? monthYear(anchor)
         : `${monthDay(rangeStart)} – ${monthDay(addDaysStr(rangeEnd, -1))}, ${rangeStart.slice(0, 4)}`;
+
+
+  function renderShiftCard(shift: Shift) {
+    const color = shiftColor(shift);
+    const open = !shift.employee;
+    const startLabel = formatInTimeZone(toDate(shift.starts_at), tz, "h a").replace(" ", "").toLowerCase();
+    const endLabel = formatInTimeZone(toDate(shift.ends_at), tz, "h a").replace(" ", "").toLowerCase();
+    const hrs = durationHours(shift.starts_at, shift.ends_at) - (shift.break_minutes || 0) / 60;
+    return (
+      <button
+        key={shift.id}
+        data-shift-id={shift.id}
+        onClick={() => { setSelected(shift); setModalOpen(true); }}
+        onContextMenu={(event) => openMenu(event, shift)}
+        onKeyDown={(event) => openMenuFromKeyboard(event, shift)}
+        aria-haspopup="menu"
+        className={cn(
+          "w-full rounded-lg border border-line bg-raised p-2 text-left transition hover:border-line-strong hover:shadow-sm",
+          open && "border-dashed bg-[#fdf7f2]",
+        )}
+        style={{ borderLeft: `3px solid ${color}` }}
+      >
+        <div className="flex items-center justify-between gap-1">
+          <span className="font-mono text-[8px] leading-none text-muted">{startLabel}–{endLabel}</span>
+          <span className="font-mono text-[8px] leading-none text-muted/70">{hrs.toFixed(1)}h</span>
+        </div>
+        <p className="mt-1 truncate text-[10px] font-semibold leading-tight text-ink">
+          {shift.expand?.position?.name || shift.expand?.department?.name || "Shift"}
+        </p>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          {open ? (
+            <span className="inline-flex rounded-full border border-[#edd0c1] bg-[#f6e2d8] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-[#9a3b1f]">
+              Open
+            </span>
+          ) : (
+            <>
+              <Avatar name={fullName(shift.expand?.employee)} id={shift.employee} size="xs" className="!size-4 !text-[7px]" />
+              <span className="truncate text-[9px] text-muted">
+                {fullName(shift.expand?.employee).split(" ")[0]}
+              </span>
+            </>
+          )}
+          {shift.status === "draft" && <span className="ml-auto text-[8px] font-medium uppercase text-[#82621c]">Draft</span>}
+        </div>
+      </button>
+    );
+  }
+
+  function renderDayColumn(day: string, dayShifts: Shift[], limit: number) {
+    const outsideMonth = rangeView === "month" && day.slice(0, 7) !== anchor.slice(0, 7);
+    const dayHours = dayShifts
+      .filter((shift) => shift.employee)
+      .reduce((sum, shift) => sum + durationHours(shift.starts_at, shift.ends_at) - (shift.break_minutes || 0) / 60, 0);
+    const dayOpen = dayShifts.filter((shift) => !shift.employee).length;
+    const shown = limit === Infinity ? dayShifts : dayShifts.slice(0, limit);
+    const hidden = dayShifts.length - shown.length;
+    return (
+      <section
+        key={day}
+        data-day-cell={day}
+        onContextMenu={(event) => openMenu(event, undefined, day)}
+        className={cn(
+          "flex flex-col rounded-xl border border-line bg-surface",
+          rangeView === "day" ? "min-h-[360px]" : rangeView === "week" ? "min-h-[480px]" : "min-h-[150px]",
+          day === today && "border-[#d9c8b4] bg-[#fbf6ec]",
+          outsideMonth && "opacity-55",
+        )}
+      >
+        <div className={cn("flex items-center justify-between border-b border-line px-2.5 py-2", day === today && "border-[#e4d6c2]")}>
+          <div>
+            <p className={cn("text-[9px] font-semibold uppercase tracking-[0.12em]", day === today ? "text-accent" : "text-muted")}>
+              {weekdayShort(day)}
+            </p>
+            <p className={cn("text-base font-semibold leading-tight tabular", day === today ? "text-accent" : "text-ink")}>
+              {Number(day.slice(8))}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="font-mono text-[9px] tabular text-muted">{dayHours.toFixed(1)}h</p>
+            <p className={cn("text-[9px]", dayOpen ? "font-medium text-accent" : "text-muted/70")}>{dayOpen ? `${dayOpen} open` : "covered"}</p>
+          </div>
+        </div>
+        <div className="flex-1 space-y-1.5 p-1.5">
+          {shown.map(renderShiftCard)}
+          {hidden > 0 && (
+            <button
+              onClick={() => openDay(day)}
+              className="w-full rounded-lg border border-dashed border-line py-1.5 text-[9px] font-medium text-muted transition hover:border-line-strong hover:text-ink"
+            >
+              +{hidden} more · view day
+            </button>
+          )}
+          {dayShifts.length === 0 && (
+            <button
+              onClick={() => isManager && openNew(day)}
+              onContextMenu={(event) => openMenu(event, undefined, day)}
+              className="w-full rounded-lg border border-dashed border-line py-6 text-[10px] text-muted/60 transition hover:border-line-strong hover:text-muted"
+            >
+              {isManager ? "+ Add shift" : "No shifts"}
+            </button>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  const weekdayHeader = (
+    <div data-testid="weekday-header" className="hidden grid-cols-7 gap-2 pb-1 lg:grid">
+      {days.slice(0, 7).map((day) => (
+        <div key={day} className="px-2 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+          {weekdayShort(day)}
+        </div>
+      ))}
+    </div>
+  );
+  const mobileLimit = rangeView === "day" ? Infinity : rangeView === "week" ? 8 : rangeView === "month" ? 4 : 6;
 
   if (loading) return <Spinner label="Loading schedule…" />;
 
@@ -619,97 +750,33 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      <div className={cn("hidden gap-2 lg:grid", rangeView === "day" ? "lg:grid-cols-1" : "lg:grid-cols-7", layout !== "board" && "lg:hidden")}>
-        {byDay.map(({ day, shifts: dayShifts }) => {
-          const outsideMonth = rangeView === "month" && day.slice(0, 7) !== anchor.slice(0, 7);
-          const dayHours = dayShifts
-            .filter((s) => s.employee)
-            .reduce((sum, s) => sum + durationHours(s.starts_at, s.ends_at) - (s.break_minutes || 0) / 60, 0);
-          const dayOpen = dayShifts.filter((s) => !s.employee).length;
-          return (
-            <section
-              key={day}
-              className={cn(
-                "flex flex-col rounded-xl border border-line bg-surface",
-                rangeView === "day" ? "min-h-[360px]" : rangeView === "week" ? "min-h-[480px]" : rangeView === "2weeks" ? "min-h-[160px]" : "min-h-[120px]",
-                day === today && "border-[#d9c8b4] bg-[#fbf6ec]",
-                outsideMonth && "opacity-55",
-              )}
-            >
-              <div className={cn("flex items-center justify-between border-b border-line px-2.5 py-2", day === today && "border-[#e4d6c2]")}>
-                <div>
-                  <p className={cn("text-[9px] font-semibold uppercase tracking-[0.12em]", day === today ? "text-accent" : "text-muted")}>
-                    {weekdayShort(day)}
-                  </p>
-                  <p className={cn("text-base font-semibold leading-tight tabular", day === today ? "text-accent" : "text-ink")}>
-                    {Number(day.slice(8))}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-mono text-[9px] tabular text-muted">{dayHours.toFixed(1)}h</p>
-                  <p className={cn("text-[9px]", dayOpen ? "font-medium text-accent" : "text-muted/70")}>{dayOpen ? `${dayOpen} open` : "covered"}</p>
-                </div>
+      {rangeView === "2weeks" || rangeView === "4weeks" ? (
+        <div className="hidden lg:block">
+          {weekdayHeader}
+          {weeks.map((week, index) => (
+            <div key={week[0]} data-week-row={index} className="mt-2">
+              <div className="mb-1.5 flex items-center justify-between px-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Week {index + 1}</span>
+                <span className="font-mono text-[10px] text-muted">{monthDay(week[0])} – {monthDay(week[6])}</span>
               </div>
-              <div className="flex-1 space-y-1.5 p-1.5">
-                {dayShifts.map((shift) => {
-                  const color = shiftColor(shift);
-                  const open = !shift.employee;
-                  const startLabel = formatInTimeZone(toDate(shift.starts_at), tz, "h a").replace(" ", "").toLowerCase();
-                  const endLabel = formatInTimeZone(toDate(shift.ends_at), tz, "h a").replace(" ", "").toLowerCase();
-                  const hrs = durationHours(shift.starts_at, shift.ends_at) - (shift.break_minutes || 0) / 60;
-                  return (
-                    <button
-                      key={shift.id}
-                      data-shift-id={shift.id}
-                      onClick={() => { setSelected(shift); setModalOpen(true); }}
-                      onContextMenu={(event) => openMenu(event, shift)}
-                      onKeyDown={(event) => openMenuFromKeyboard(event, shift)}
-                      aria-haspopup="menu"
-                      className={cn(
-                        "w-full rounded-lg border border-line bg-raised p-2 text-left transition hover:border-line-strong hover:shadow-sm",
-                        open && "border-dashed bg-[#fdf7f2]",
-                      )}
-                      style={{ borderLeft: `3px solid ${color}` }}
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-mono text-[8px] leading-none text-muted">{startLabel}–{endLabel}</span>
-                        <span className="font-mono text-[8px] leading-none text-muted/70">{hrs.toFixed(1)}h</span>
-                      </div>
-                      <p className="mt-1 truncate text-[10px] font-semibold leading-tight text-ink">
-                        {shift.expand?.position?.name || shift.expand?.department?.name || "Shift"}
-                      </p>
-                      <div className="mt-1.5 flex items-center gap-1.5">
-                        {open ? (
-                          <span className="inline-flex rounded-full border border-[#edd0c1] bg-[#f6e2d8] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-[#9a3b1f]">
-                            Open
-                          </span>
-                        ) : (
-                          <>
-                            <Avatar name={fullName(shift.expand?.employee)} id={shift.employee} size="xs" className="!size-4 !text-[7px]" />
-                            <span className="truncate text-[9px] text-muted">
-                              {fullName(shift.expand?.employee).split(" ")[0]}
-                            </span>
-                          </>
-                        )}
-                        {shift.status === "draft" && <span className="ml-auto text-[8px] font-medium uppercase text-[#82621c]">Draft</span>}
-                      </div>
-                    </button>
-                  );
-                })}
-                {dayShifts.length === 0 && (
-                  <button
-                    onClick={() => isManager && openNew(day)}
-                    onContextMenu={(event) => openMenu(event, undefined, day)}
-                    className="w-full rounded-lg border border-dashed border-line py-6 text-[10px] text-muted/60 transition hover:border-line-strong hover:text-muted"
-                  >
-                    {isManager ? "+ Add shift" : "No shifts"}
-                  </button>
-                )}
+              <div className="grid grid-cols-7 gap-2">
+                {week.map((day) => renderDayColumn(day, byDayMap.get(day) || [], 6))}
               </div>
-            </section>
-          );
-        })}
-      </div>
+            </div>
+          ))}
+        </div>
+      ) : rangeView === "month" ? (
+        <div className="hidden lg:block">
+          {weekdayHeader}
+          <div data-testid="month-grid" className="grid grid-cols-7 gap-2">
+            {byDay.map(({ day, shifts }) => renderDayColumn(day, shifts, 4))}
+          </div>
+        </div>
+      ) : (
+        <div className={cn("hidden gap-2 lg:grid", rangeView === "day" ? "lg:grid-cols-1" : "lg:grid-cols-7", layout !== "board" && "lg:hidden")}>
+          {byDay.map(({ day, shifts }) => renderDayColumn(day, shifts, rangeView === "day" ? Infinity : 8))}
+        </div>
+      )}
 
       {laborBudget > 0 && (
         <div className={`mb-4 rounded-xl border px-4 py-3 ${scheduledCost > rangeBudget ? "border-[#eccac4] bg-[#f9eeec]" : "border-line bg-surface"}`}>
@@ -863,7 +930,7 @@ export default function SchedulePage() {
             </div>
             <div className="space-y-2 p-3">
               {dayShifts.length === 0 && <p className="py-3 text-center text-xs text-muted">No shifts.</p>}
-              {dayShifts.map((shift) => (
+              {dayShifts.slice(0, mobileLimit).map((shift) => (
                 <div key={shift.id} data-shift-id={shift.id} className="flex items-start gap-1">
                   <button
                     onClick={() => { setSelected(shift); setModalOpen(true); }}
@@ -885,6 +952,14 @@ export default function SchedulePage() {
                   )}
                 </div>
               ))}
+              {dayShifts.length > mobileLimit && (
+                <button
+                  onClick={() => openDay(day)}
+                  className="w-full rounded-lg border border-dashed border-line py-2 text-[11px] font-medium text-muted transition hover:border-line-strong hover:text-ink"
+                >
+                  +{dayShifts.length - mobileLimit} more · view day
+                </button>
+              )}
             </div>
           </section>
         ))}
