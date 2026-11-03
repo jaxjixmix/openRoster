@@ -464,7 +464,7 @@ export default function SchedulePage() {
     if (rangeView !== "day" && rangeView !== "week" && layout === "timeline") setLayout("board");
   }, [rangeView, layout]);
 
-  const periodLabel = rangeView === "day" ? "today" : rangeView === "month" ? "this month" : "in this range";
+  const periodLabel = rangeView === "day" ? "today" : rangeView === "week" ? "this week" : "in this view";
   const rangeLabel =
     rangeView === "day"
       ? longDate(anchor)
