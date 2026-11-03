@@ -274,6 +274,48 @@ function shiftAssignmentError(app, record, employeeId, ignoreId) {
   return null
 }
 
+function lastDayOfMonth(year, monthIndex) {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+}
+
+function generatePayPeriods(frequency, from, to, weekStartsOn, payOffset) {
+  const periods = []
+  const offset = payOffset === undefined ? 5 : payOffset
+  const addPeriod = (start, end) => {
+    if (end < from || start > to) return
+    periods.push({ start: start, end: end, pay_date: addDays(end, offset) })
+  }
+
+  if (frequency === "monthly" || frequency === "semimonthly") {
+    let cursor = new Date(from + "T00:00:00Z")
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), 1))
+    const limit = new Date(to + "T00:00:00Z")
+    while (cursor <= limit) {
+      const year = cursor.getUTCFullYear()
+      const month = cursor.getUTCMonth()
+      const first = year + "-" + String(month + 1).padStart(2, "0") + "-01"
+      const last = year + "-" + String(month + 1).padStart(2, "0") + "-" + String(lastDayOfMonth(year, month)).padStart(2, "0")
+      if (frequency === "monthly") {
+        addPeriod(first, last)
+      } else {
+        addPeriod(first, year + "-" + String(month + 1).padStart(2, "0") + "-15")
+        addPeriod(year + "-" + String(month + 1).padStart(2, "0") + "-16", last)
+      }
+      cursor = new Date(Date.UTC(year, month + 1, 1))
+    }
+    return periods
+  }
+
+  const step = frequency === "weekly" ? 7 : 14
+  let start = weekStartDate(from, weekStartsOn)
+  while (start <= to) {
+    const end = addDays(start, step - 1)
+    if (end >= from) addPeriod(start, end)
+    start = addDays(start, step)
+  }
+  return periods
+}
+
 function payrollPayload(app, auth, body, commit) {
   const startDate = body.period_start
   const endDate = body.period_end
@@ -378,6 +420,16 @@ function payrollPayload(app, auth, body, commit) {
         Object.keys(data).forEach((key) => stub.set(key, data[key]))
         txApp.save(stub)
       })
+
+      const perPeriod = company.getFloat("pto_accrual_hours_per_period") || 0
+      const perHour = company.getFloat("pto_accrual_hours_per_hour") || 0
+      if (perPeriod || perHour) {
+        stubs.forEach((data) => {
+          const employee = txApp.findRecordById("employees", data.employee)
+          const hours = (data.regular_hours || 0) + (data.overtime_hours || 0)
+          accruePto(txApp, employee, perPeriod + perHour * hours, startDate, endDate, auth.id)
+        })
+      }
       run = runRecord
     })
   }
@@ -393,6 +445,81 @@ function payrollPayload(app, auth, body, commit) {
       net: totalNet,
     },
   }
+}
+
+function syncPtoBalance(app, employeeId) {
+  const entries = app.findRecordsByFilter("pto_entries", "employee = {:employee}", "", 10000, 0, { employee: employeeId })
+  const balance = round2(entries.reduce((sum, entry) => sum + (entry.getFloat("hours") || 0), 0))
+  const employee = app.findRecordById("employees", employeeId)
+  employee.set("pto_balance_hours", balance)
+  app.save(employee)
+  return balance
+}
+
+function applyPtoUsage(app, request) {
+  if (!request || request.getString("status") !== "approved") return
+  const employeeId = request.getString("employee")
+  if (!employeeId) return
+  let employee
+  try { employee = app.findRecordById("employees", employeeId) } catch (err) { return }
+
+  let entry = null
+  try {
+    entry = app.findFirstRecordByFilter("pto_entries", "time_off_request = {:request}", { request: request.id })
+  } catch (err) {}
+  if (!entry) {
+    entry = new Record(app.findCollectionByNameOrId("pto_entries"))
+    entry.set("company", employee.getString("company"))
+    entry.set("employee", employeeId)
+    entry.set("time_off_request", request.id)
+    entry.set("type", "usage")
+  }
+  entry.set("date", request.getString("start_date"))
+  entry.set("hours", -Math.abs(request.getFloat("hours") || 0))
+  entry.set("note", "Approved " + request.getString("type") + " request")
+  entry.set("created_by", request.getString("approved_by") || "")
+  app.save(entry)
+  syncPtoBalance(app, employeeId)
+}
+
+function removePtoUsage(app, requestId, employeeId) {
+  const entries = app.findRecordsByFilter("pto_entries", "time_off_request = {:request}", "", 100, 0, { request: requestId })
+  entries.forEach((entry) => app.delete(entry))
+  if (employeeId) syncPtoBalance(app, employeeId)
+}
+
+function accruePto(app, employee, amount, periodStart, periodEnd, createdBy) {
+  const hours = round2(amount || 0)
+  if (hours <= 0) return
+  try {
+    app.findFirstRecordByFilter(
+      "pto_entries",
+      "employee = {:employee} && period_start = {:start} && type = 'accrual'",
+      { employee: employee.id, start: periodStart + " 00:00:00.000Z" }
+    )
+    return
+  } catch (err) {}
+  const entry = new Record(app.findCollectionByNameOrId("pto_entries"))
+  entry.set("company", employee.getString("company"))
+  entry.set("employee", employee.id)
+  entry.set("date", periodEnd + " 00:00:00.000Z")
+  entry.set("type", "accrual")
+  entry.set("hours", hours)
+  entry.set("period_start", periodStart + " 00:00:00.000Z")
+  entry.set("note", "Payroll accrual")
+  if (createdBy) entry.set("created_by", createdBy)
+  app.save(entry)
+  syncPtoBalance(app, employee.id)
+}
+
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const earth = 6371000
+  const toRad = (value) => (value * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  return Math.round(earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))
 }
 
 function snapshot(record, keys) {
@@ -447,8 +574,14 @@ module.exports = {
   computeTimesheetHours: computeTimesheetHours,
   workedMinutesByDay: workedMinutesByDay,
   buildStub: buildStub,
+  syncPtoBalance: syncPtoBalance,
+  applyPtoUsage: applyPtoUsage,
+  removePtoUsage: removePtoUsage,
+  accruePto: accruePto,
+  distanceMeters: distanceMeters,
   snapshot: snapshot,
   sameFields: sameFields,
+  generatePayPeriods: generatePayPeriods,
   payrollPayload: payrollPayload,
   audit: audit,
 }

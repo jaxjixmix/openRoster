@@ -150,6 +150,46 @@ async function main() {
     assert.equal(invalidShift.status, 400, "manual assignment outside availability must fail");
     console.log("PASS manual availability check");
 
+    const periodRes = await request("/api/collections/pay_periods/records?perPage=200&sort=-period_start", { token });
+    assert.ok(periodRes.data.items.length > 0, "seed creates pay periods");
+    const currentPeriod = periodRes.data.items.find((period) => period.period_start.slice(0, 10) <= weekStart && period.period_end.slice(0, 10) >= weekStart);
+    assert.ok(currentPeriod, "current pay period exists");
+    const payStart = currentPeriod.period_start.slice(0, 10);
+    const payEnd = currentPeriod.period_end.slice(0, 10);
+    console.log("PASS pay periods");
+
+    const claimDate = new Date(new Date(weekStart + "T00:00:00Z").getTime() + 21 * 86400000).toISOString().slice(0, 10);
+    const openShift = await request("/api/collections/shifts/records", {
+      method: "POST",
+      token,
+      body: {
+        company: bootstrap.data.company.id,
+        location: sam.location,
+        department: sam.department,
+        position: sam.position,
+        starts_at: `${claimDate} 17:00:00.000Z`,
+        ends_at: `${claimDate} 20:00:00.000Z`,
+        local_date: `${claimDate} 00:00:00.000Z`,
+        local_start: "09:00",
+        local_end: "12:00",
+        status: "published",
+      },
+    });
+    assert.equal(openShift.status, 200, "open shift created");
+
+    const samLogin = await request("/api/collections/users/auth-with-password", {
+      method: "POST",
+      body: { identity: "sam@harborhearth.co", password: "OpenRoster123!" },
+    });
+    const claimed = await request("/api/openroster/shifts/claim", {
+      method: "POST",
+      token: samLogin.data.token,
+      body: { shift: openShift.data.id },
+    });
+    assert.equal(claimed.status, 200, "employee claims open shift");
+    assert.equal(claimed.data.shift.employee, sam.id);
+    console.log("PASS open shift claim");
+
     const auto = await request("/api/openroster/schedule/auto", {
       method: "POST",
       token,
@@ -184,7 +224,7 @@ async function main() {
     const preview = await request("/api/openroster/payroll/preview", {
       method: "POST",
       token,
-      body: { period_start: weekStart, period_end: weekEnd },
+      body: { period_start: payStart, period_end: payEnd },
     });
     assert.equal(preview.status, 200, "payroll preview");
     assert.ok(preview.data.totals.employees >= 1);
@@ -199,6 +239,45 @@ async function main() {
     });
     assert.equal(deleted.ok, false, "manager must not delete an employee");
     console.log("PASS destructive delete blocked");
+
+    const ptoEntries = await request("/api/collections/pto_entries/records?perPage=100", { token });
+    assert.ok(ptoEntries.data.items.length > 0, "ledger seeded");
+    const pendingLeave = await request("/api/collections/time_off_requests/records?perPage=10&filter=" + encodeURIComponent("status = 'pending'"), { token });
+    const leave = pendingLeave.data.items[0];
+    if (leave) {
+      const before = await request("/api/collections/employees/records?perPage=50", { token });
+      const beforeBalance = before.data.items.find((employee) => employee.id === leave.employee).pto_balance_hours;
+      const decided = await request(`/api/collections/time_off_requests/records/${leave.id}`, {
+        method: "PATCH",
+        token,
+        body: { status: "approved" },
+      });
+      assert.equal(decided.status, 200, "approve time off");
+      const after = await request("/api/collections/employees/records?perPage=50", { token });
+      const afterBalance = after.data.items.find((employee) => employee.id === leave.employee).pto_balance_hours;
+      assert.equal(afterBalance, beforeBalance - leave.hours, "PTO ledger decrements balance");
+      console.log("PASS PTO ledger");
+    }
+
+    let punches = await request("/api/collections/punches/records?perPage=1&sort=-punched_at", { token });
+    if (!punches.data.items.length) {
+      const firstEmployee = employeesForShift.data.items[0];
+      await request("/api/collections/punches/records", {
+        method: "POST",
+        token,
+        body: { employee: firstEmployee.id, type: "in", punched_at: new Date().toISOString(), source: "admin" },
+      });
+      punches = await request("/api/collections/punches/records?perPage=1&sort=-punched_at", { token });
+    }
+    assert.ok(punches.data.items.length > 0);
+    const punch = punches.data.items[0];
+    const corrected = await request("/api/openroster/punches/correct", {
+      method: "POST",
+      token,
+      body: { punch: punch.id, type: punch.type, punched_at: punch.punched_at, reason: "API smoke test correction" },
+    });
+    assert.equal(corrected.status, 200, "punch correction");
+    console.log("PASS punch correction");
 
     const runs = await request("/api/collections/pay_runs/records?perPage=5", { token });
     assert.ok(runs.data.items.length > 0);
@@ -231,7 +310,11 @@ async function main() {
       body: { status: "draft" },
     });
     assert.equal(reopen.ok, false, "paid pay run must stay paid/voided");
-    console.log("PASS pay run lock");
+
+    const closedPeriods = await request("/api/collections/pay_periods/records?perPage=200", { token });
+    const closedPeriod = closedPeriods.data.items.find((period) => period.period_start.slice(0, 10) === payStart);
+    assert.equal(closedPeriod.status, "closed", "paid period locks");
+    console.log("PASS pay run lock and period close");
 
     const voided = await request("/api/openroster/payroll/status", {
       method: "POST",
@@ -240,10 +323,14 @@ async function main() {
     });
     assert.equal(voided.status, 200, "paid run can be voided");
 
+    const reopenedPeriods = await request("/api/collections/pay_periods/records?perPage=200", { token });
+    const reopenedPeriod = reopenedPeriods.data.items.find((period) => period.period_start.slice(0, 10) === payStart);
+    assert.equal(reopenedPeriod.status, "open", "voiding reopens the period");
+
     const replacement = await request("/api/openroster/payroll/run", {
       method: "POST",
       token,
-      body: { period_start: weekStart, period_end: weekEnd },
+      body: { period_start: payStart, period_end: payEnd },
     });
     assert.equal(replacement.status, 200, "voided period can be rerun");
     console.log("PASS pay run void and replacement");

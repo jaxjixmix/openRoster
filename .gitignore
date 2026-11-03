@@ -37,6 +37,9 @@ web/out/
 # Local demo screenshots / notes
 docs/*.tmp
 
+# Backups
+backups/
+
 # Test data
 pb/.test-data/
 pb/.test-setup-data/

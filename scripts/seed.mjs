@@ -86,6 +86,8 @@ async function main() {
     overtime_weekly_hours: 40,
     overtime_daily_hours: 8,
     overtime_multiplier: 1.5,
+    pto_accrual_hours_per_period: 4,
+    pto_accrual_hours_per_hour: 0,
     address: "1 Ferry Building, San Francisco, CA",
     phone: "(415) 555-0142",
     setup_complete: true,
@@ -166,6 +168,14 @@ async function main() {
       status: "active",
     });
     employees[p.first.toLowerCase()] = emp;
+    await create("pto_entries", {
+      company: company.id,
+      employee: emp.id,
+      date: `${TODAY} 00:00:00.000Z`,
+      type: "carryover",
+      hours: p.type === "full_time" ? 56 : 24,
+      note: "Opening balance",
+    });
   }
   console.log("Employees:", Object.keys(employees).length);
 
@@ -303,6 +313,18 @@ async function main() {
     body: JSON.stringify({ identity: "jordan@harborhearth.co", password: "OpenRoster123!" }),
   });
   token = manager.token;
+
+  const periodFrom = addDays(WEEK_START, -7);
+  const periodTo = addDays(WEEK_START, 90);
+  await api("/api/openroster/pay_periods/generate", {
+    method: "POST",
+    body: JSON.stringify({ from: periodFrom, to: periodTo }),
+  });
+  const periods = await api(`/api/collections/pay_periods/records?perPage=100&sort=-period_start&filter=${encodeURIComponent(`period_start <= '${TODAY} 23:59:59.999Z' && period_end >= '${TODAY} 00:00:00.000Z'`)}`);
+  const currentPeriod = periods.items[0];
+  const runStart = currentPeriod ? currentPeriod.period_start.slice(0, 10) : WEEK_START;
+  const runEnd = currentPeriod ? currentPeriod.period_end.slice(0, 10) : addDays(WEEK_START, 6);
+
   const generated = await api("/api/openroster/timesheets/generate", {
     method: "POST",
     body: JSON.stringify({ period_start: WEEK_START, period_end: addDays(WEEK_START, 6) }),
@@ -322,8 +344,9 @@ async function main() {
   try {
     const run = await api("/api/openroster/payroll/run", {
       method: "POST",
-      body: JSON.stringify({ period_start: WEEK_START, period_end: addDays(WEEK_START, 6) }),
+      body: JSON.stringify({ period_start: runStart, period_end: runEnd }),
     });
+    console.log("Pay period:", runStart, "to", runEnd);
     console.log("Draft pay run:", run.totals.employees, "people, net", run.totals.net);
   } catch (err) {
     console.log("Payroll draft skipped:", err.message);

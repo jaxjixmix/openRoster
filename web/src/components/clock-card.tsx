@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock3, LogIn, LogOut, MapPin, RefreshCw } from "lucide-react";
 import { pb } from "@/lib/pb";
 import { getPunchesBetween, errorMessage } from "@/lib/data";
-import { addDaysStr, formatTime, toDate, todayIn, toUtcIso } from "@/lib/dates";
+import { addDaysStr, formatTime, toDate, todayIn, toUtcIso, tzOffsetForDate } from "@/lib/dates";
 import type { Punch } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { Button, ErrorNote } from "@/components/ui";
@@ -97,13 +97,32 @@ export function ClockCard({
     return total;
   }, [punches, now]);
 
+  async function position(): Promise<{ lat?: number; lng?: number }> {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return {}
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve({}),
+        { enableHighAccuracy: false, timeout: 3000, maximumAge: 60000 },
+      )
+    })
+  }
+
   async function punch(type: "in" | "out") {
     setBusy(true);
     setError("");
     try {
+      const coords = await position()
       await pb.send("/api/openroster/clock", {
         method: "POST",
-        body: { type, employee: employeeId || undefined, source: "web" },
+        body: {
+          type,
+          employee: employeeId || undefined,
+          source: "web",
+          offset_minutes: tzOffsetForDate(todayIn(tz), tz),
+          lat: coords.lat,
+          lng: coords.lng,
+        },
       });
       await load();
       onChanged?.();
@@ -205,6 +224,9 @@ export function ClockCard({
         {!loading && punches.length === 0 && !isManager && (
           <p className="mt-3 text-[11px] text-muted">No punches yet today.</p>
         )}
+        <p className="mt-3 text-[10px] leading-relaxed text-muted/70">
+          Location is checked when your browser shares it. The punch is saved in UTC.
+        </p>
       </div>
     </div>
   );

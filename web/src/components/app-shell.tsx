@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
+  CircleUserRound,
   CalendarDays,
   ClipboardCheck,
   Clock3,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/cn";
 import { useAuth } from "@/lib/auth";
 import { roleLabel } from "@/lib/format";
 import { Avatar, Badge } from "@/components/ui";
+import { CurrencyProvider } from "@/lib/currency";
 
 const NAV = [
   { href: "/", label: "Today", icon: LayoutDashboard, manager: false },
@@ -29,6 +31,7 @@ const NAV = [
   { href: "/timeclock", label: "Time Clock", icon: Clock3, manager: false },
   { href: "/timesheets", label: "Timesheets", icon: ClipboardCheck, manager: false },
   { href: "/requests", label: "Time Off", icon: Inbox, manager: false },
+  { href: "/me", label: "My profile", icon: CircleUserRound, manager: false },
   { href: "/people", label: "People", icon: Users, manager: true },
   { href: "/payroll", label: "Payroll", icon: Wallet, manager: true },
   { href: "/reports", label: "Reports", icon: BarChart3, manager: true },
@@ -129,7 +132,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, loading, employee, isManager } = useAuth();
+  const { user, loading, employee, company, isManager } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   if (loading) {
@@ -192,7 +195,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               withholding, filings or direct deposit. Do not use it to pay real people yet.
             </p>
           </div>
-          {children}
+          <CurrencyProvider currency={company?.currency || "USD"}>
+            {children}
+          </CurrencyProvider>
         </main>
       </div>
     </div>

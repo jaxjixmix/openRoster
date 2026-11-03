@@ -1,0 +1,12 @@
+# Replace these with your real hostnames and run Caddy in front of Docker Compose.
+# Build the web image with NEXT_PUBLIC_PB_URL=https://api.example.com
+
+app.example.com {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+api.example.com {
+	encode zstd gzip
+	reverse_proxy pocketbase:8090
+}

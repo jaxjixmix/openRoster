@@ -16,11 +16,13 @@ import {
   weekStart,
   weekdayShort,
 } from "@/lib/dates";
-import { fullName, hours, money } from "@/lib/format";
+import { fullName, hours } from "@/lib/format";
+import { useMoney } from "@/lib/currency";
 import { Badge, Button, PageHeader, Spinner, StatCard } from "@/components/ui";
 import { shiftColor } from "@/components/shift-row";
 
 export default function ReportsPage() {
+  const money = useMoney();
   const { company, isManager } = useAuth();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);

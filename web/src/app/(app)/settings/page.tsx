@@ -27,7 +27,8 @@ import {
 } from "@/lib/data";
 import type { Department, Holiday, Location, PayRule, Position, User } from "@/lib/types";
 import { formatDate, toDate } from "@/lib/dates";
-import { money, roleLabel, titleCase } from "@/lib/format";
+import { roleLabel, titleCase } from "@/lib/format";
+import { useMoney } from "@/lib/currency";
 import {
   Badge,
   Button,
@@ -48,6 +49,7 @@ type Tab = "company" | "locations" | "departments" | "positions" | "pay" | "holi
 export default function SettingsPage() {
   const { company, user, isManager, refresh } = useAuth();
   const toast = useToast();
+  const money = useMoney();
   const [tab, setTab] = useState<Tab>("company");
   const [locations, setLocations] = useState<Location[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -68,6 +70,8 @@ export default function SettingsPage() {
     overtime_weekly_hours: "40",
     overtime_daily_hours: "8",
     overtime_multiplier: "1.5",
+    pto_accrual_hours_per_period: "0",
+    pto_accrual_hours_per_hour: "0",
     address: "",
     phone: "",
   });
@@ -128,6 +132,8 @@ export default function SettingsPage() {
       overtime_weekly_hours: String(company.overtime_weekly_hours ?? 40),
       overtime_daily_hours: String(company.overtime_daily_hours ?? 8),
       overtime_multiplier: String(company.overtime_multiplier ?? 1.5),
+      pto_accrual_hours_per_period: String(company.pto_accrual_hours_per_period ?? 0),
+      pto_accrual_hours_per_hour: String(company.pto_accrual_hours_per_hour ?? 0),
       address: company.address || "",
       phone: company.phone || "",
     });
@@ -142,6 +148,8 @@ export default function SettingsPage() {
         overtime_weekly_hours: Number(companyForm.overtime_weekly_hours),
         overtime_daily_hours: Number(companyForm.overtime_daily_hours),
         overtime_multiplier: Number(companyForm.overtime_multiplier),
+        pto_accrual_hours_per_period: Number(companyForm.pto_accrual_hours_per_period),
+        pto_accrual_hours_per_hour: Number(companyForm.pto_accrual_hours_per_hour),
       });
       await refresh();
       toast("Company settings saved.");
@@ -272,6 +280,10 @@ export default function SettingsPage() {
                   <div><Label>OT after / week</Label><Input type="number" value={companyForm.overtime_weekly_hours} onChange={(e) => setCompanyForm({ ...companyForm, overtime_weekly_hours: e.target.value })} disabled={!isAdmin} /></div>
                   <div><Label>OT after / day</Label><Input type="number" value={companyForm.overtime_daily_hours} onChange={(e) => setCompanyForm({ ...companyForm, overtime_daily_hours: e.target.value })} disabled={!isAdmin} /></div>
                   <div><Label>OT multiplier</Label><Input type="number" step="0.1" value={companyForm.overtime_multiplier} onChange={(e) => setCompanyForm({ ...companyForm, overtime_multiplier: e.target.value })} disabled={!isAdmin} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label>PTO accrued / pay period</Label><Input type="number" step="0.25" value={companyForm.pto_accrual_hours_per_period} onChange={(e) => setCompanyForm({ ...companyForm, pto_accrual_hours_per_period: e.target.value })} disabled={!isAdmin} /></div>
+                  <div><Label>PTO accrued / hour</Label><Input type="number" step="0.01" value={companyForm.pto_accrual_hours_per_hour} onChange={(e) => setCompanyForm({ ...companyForm, pto_accrual_hours_per_hour: e.target.value })} disabled={!isAdmin} /></div>
                 </div>
                 <div className="rounded-lg bg-[#f4f1e9] p-3 text-[11px] leading-relaxed text-muted">
                   Payroll uses these rules plus the rates in Pay rules. It does not file taxes or connect to a payment provider.

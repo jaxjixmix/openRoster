@@ -16,25 +16,30 @@ OpenRoster borrows the *ideas* — Staffjoy's company/location/team/worker model
 
 ## Status
 
-OpenRoster is a **working alpha**. The delivery backlog is public:
+OpenRoster is a **working alpha**. Current release: **v0.2.0-alpha**. The delivery backlog is public:
 
 - [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
-- [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — next.
-- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — later.
-- [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — later.
+- [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — shipped: pay periods, PTO ledger, local clock day, geofence, punch corrections, currency and CSV. Remaining: PDF stubs, locale calendar, breaks/kiosk PIN.
+- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — shipped: self-service profile/availability and open-shift claiming. Remaining: notifications, copy week, labor budget, certifications, swaps.
+- [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs and CSV. Remaining: monitoring, type generation, i18n/PWA, accessibility pass.
 - [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
 
 ## What v1 does
 
 - **First-run setup** — create the company, first location and first administrator in the browser. Demo data is opt-in.
+- **Pay periods** — generated from weekly/biweekly/semimonthly/monthly frequency, selected in Payroll and locked when paid.
+- **PTO ledger** — carryover, accrual, approved usage and manual adjustments; balances recalculate from the ledger.
+- **Self-service** — staff profile, availability editing, PTO history and time-off requests.
+- **Open shifts** — staff can see published open shifts and claim them; the server checks leave, availability and weekly hours.
 - **Schedule** — week board and hour-by-hour timeline, location filter, draft/publish, realtime updates, overlap validation, manual leave/hour-cap checks.
 - **Auto-fill** — assigns open shifts using availability, approved time off, existing shifts, weekly hour caps and position fit. It leaves genuinely uncovered shifts open instead of guessing.
 - **Time clock** — clock in/out from the web, kiosk mode for managers, live “on the clock” list, duplicate-punch and backdating protection.
 - **Timesheets** — generated from punches (scheduled hours are a fallback), daily and weekly overtime, PTO, approve individually or in bulk. Approved sheets are locked.
 - **Payroll** — preview and draft runs from approved timesheets, configurable percent/fixed rules, per-stub breakdown, pay history, draft → approved → paid → voided, no destructive deletes.
-- **People** — profiles, pay, availability, documents, PTO balance, recent punches, archive/restore.
+- **People** — profiles, pay, availability, documents, PTO ledger, recent punches, archive/restore.
 - **Time off** — requests, approve/deny queue, balances.
 - **Reports** — scheduled vs actual hours, labor by department, coverage, overtime watch.
+- **Exports** — CSV for timesheets, payroll preview, people and schedules.
 - **Settings** — company, locations, departments, positions, pay rules, holidays, role-based access, audit log.
 
 Staff see their own schedule, clock, timesheet and time off. Managers see the company. Admins manage roles and company settings.
@@ -114,6 +119,15 @@ The PocketBase dashboard is at http://localhost:8097/_/; keep it private.
 
 `NEXT_PUBLIC_PB_URL` is baked into the browser bundle at image build time, so set it to the URL the **browser** will use (not a Docker-internal hostname). For production, put both services behind HTTPS.
 
+## Production notes
+
+- **TLS / reverse proxy:** see [`deploy/Caddyfile`](deploy/Caddyfile). Use `app.example.com` for Next and `api.example.com` for PocketBase, then build the web image with `NEXT_PUBLIC_PB_URL=https://api.example.com`.
+- **Backups:** `make backup`, then read [`docs/BACKUP.md`](docs/BACKUP.md). Restore is scripted and should be tested quarterly.
+- **Containers:** both images run as non-root; the web container has a healthcheck.
+- **Upgrades:** see [`docs/UPGRADE.md`](docs/UPGRADE.md).
+- **API:** custom routes are documented in [`docs/API.md`](docs/API.md).
+- **Payroll model:** see [`docs/PAYROLL.md`](docs/PAYROLL.md).
+
 ## Tests and CI
 
 ```bash
@@ -137,8 +151,10 @@ CI runs build, lint, unit tests, API/setup tests and a secret scan. See [CONTRIB
 | `shifts` | Assigned or open, draft/published, local date, breaks |
 | `punches` | In/out events with source and optional location |
 | `timesheets`, `timesheet_entries` | Period totals and daily detail |
+| `pay_periods` | Generated weekly/biweekly/semimonthly/monthly periods |
 | `pay_runs`, `pay_stubs` | Draft/approved/paid/voided runs and per-person breakdowns |
 | `pay_rules` | Percent / per-hour / per-period withholdings and contributions |
+| `pto_entries` | Carryover, accrual, usage and adjustment ledger |
 | `holidays`, `documents` | Calendar and protected HR files |
 | `audit_log` | Actor, summary, before/after snapshots |
 
@@ -155,12 +171,14 @@ The client sends per-day UTC offsets for the company timezone, because PocketBas
 
 ## How pay is calculated
 
-1. Approved timesheets are selected for the period. Salaried staff are included without a timesheet.
-2. Hourly: `regular hours × rate`, `overtime hours × rate × multiplier`, plus PTO.
-3. Salary: annual rate prorated by calendar days in the period.
-4. Each active `pay_rule` adds a withholding or employer contribution: percent of gross, fixed per hour, or fixed per period.
-5. Net = gross − employee taxes − employee deductions. Employer taxes are reported as cost, not withheld.
-6. Creating a run writes `pay_runs` + `pay_stubs` in a transaction. Approved runs are locked. Voiding keeps stubs and timesheets for the audit trail.
+1. Pay periods are generated from `pay_frequency`; Payroll selects one period.
+2. Approved timesheets inside the period are selected. Salaried staff are included without a timesheet.
+3. Hourly: `regular hours × rate`, `overtime hours × rate × multiplier`, plus PTO.
+4. Salary: annual rate prorated by calendar days in the period.
+5. Each active `pay_rule` adds a withholding or employer contribution: percent of gross, fixed per hour, or fixed per period.
+6. Net = gross − employee taxes − employee deductions. Employer taxes are reported as cost, not withheld.
+7. Creating a run writes `pay_runs` + `pay_stubs` in a transaction, locks the period when paid, and keeps stubs/timesheets on void.
+8. PTO accrual (per period and/or per hour) is written to `pto_entries` when a pay run is created. Approved leave writes a usage entry; denial/cancellation reverses it.
 
 ## Scope boundaries (read this)
 
@@ -170,17 +188,21 @@ OpenRoster is a complete workflow, not a compliance product.
 - **No payments.** No direct deposit, checks, or provider integration.
 - **Single tenant.** One company per install. Multi-tenant isolation is not implemented.
 - **SQLite / PocketBase scale.** Excellent for a few hundred staff and modest concurrency; not a distributed enterprise system.
-- **Geofence fields are stored, not enforced.** Latitude/longitude/radius exist on locations and punches, but clock-in does not reject out-of-radius punches.
-- **No shift swaps, open-shift marketplace, push notifications, or mobile app.**
-- **PTO balance is informational.** Approving time off adds PTO hours to the timesheet but does not decrement the employee balance automatically.
-- **No pay periods yet.** Payroll still uses a selected date range; `pay_frequency` is stored but not yet used to generate periods.
-- **No automated email/SMS.** PocketBase email settings are available but not configured.
-- **Tests are not a full regression suite.** CI covers payroll math, date helpers, API smoke and setup; browser coverage is still thin.
+- **Geofence is best-effort.** When the browser shares coordinates, clock-in rejects a punch outside the location radius. If permission is denied, the punch is accepted.
+- **No shift swaps, recurring shifts, copy-week, labor budgets, certifications, or push notifications yet.**
+- **No break punches or rounding rules.** Documented as not implemented for this alpha.
+- **No kiosk PIN / device lock.**
+- **No automated email/SMS.** In-app notifications are also not implemented yet.
+- **No PDF pay stubs.** CSV export is available; use browser print or a provider for PDFs.
+- **No break/locale/i18n configuration.** Currency is wired through; date formatting is still US-English.
+- **Tests are not a full regression suite.** CI covers payroll math, dates, API, setup and browser smoke; deep scheduling/compliance scenarios are still thin.
 
 ## Project layout
 
 ```
 .github/                CI, issue templates, PR template
+deploy/                 Caddy reverse-proxy example
+docs/                   screenshots, payroll model, API, backup, upgrade
 pb/
   pb_migrations/        schema, rules, indexes, timestamps
   pb_hooks/main.pb.js   routes + validation + audit
@@ -196,9 +218,10 @@ scripts/
   test-api.mjs          seeded API smoke test
   test-setup.mjs        empty-workspace setup test
   fetch-pocketbase.sh   pinned binary download
+  backup.sh             tar-based backup
+  restore.sh            tested restore helper
 tests/
-  lib.test.cjs          payroll, overtime and date unit tests
-docs/                   screenshots
+  lib.test.cjs          payroll, overtime, dates and pay periods
 ```
 
 ## Attribution

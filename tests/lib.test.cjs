@@ -121,3 +121,36 @@ test("shiftDate prefers the stored local date", () => {
 test("pbDate-style timestamps are parsed across platforms", () => {
   assert.equal(h.toMs("2026-11-02 09:00:00.000Z"), Date.parse("2026-11-02T09:00:00.000Z"));
 });
+
+test("pay period generation follows weekly, biweekly, semimonthly and monthly calendars", () => {
+  const weekly = h.generatePayPeriods("weekly", "2026-11-02", "2026-11-15", 1, 5);
+  assert.deepEqual(weekly.map((p) => [p.start, p.end]), [
+    ["2026-11-02", "2026-11-08"],
+    ["2026-11-09", "2026-11-15"],
+  ]);
+
+  const biweekly = h.generatePayPeriods("biweekly", "2026-11-02", "2026-11-29", 1, 5);
+  assert.deepEqual(biweekly.map((p) => [p.start, p.end]), [
+    ["2026-11-02", "2026-11-15"],
+    ["2026-11-16", "2026-11-29"],
+  ]);
+  assert.equal(biweekly[0].pay_date, "2026-11-20");
+
+  const semi = h.generatePayPeriods("semimonthly", "2026-11-01", "2026-11-30", 1, 5);
+  assert.deepEqual(semi.map((p) => [p.start, p.end]), [
+    ["2026-11-01", "2026-11-15"],
+    ["2026-11-16", "2026-11-30"],
+  ]);
+
+  const monthly = h.generatePayPeriods("monthly", "2026-11-01", "2026-12-31", 1, 5);
+  assert.deepEqual(monthly.map((p) => [p.start, p.end]), [
+    ["2026-11-01", "2026-11-30"],
+    ["2026-12-01", "2026-12-31"],
+  ]);
+});
+
+test("geofence distance is in meters", () => {
+  assert.equal(h.distanceMeters(37.7955, -122.3937, 37.7955, -122.3937), 0);
+  const oneDegree = h.distanceMeters(0, 0, 0, 1);
+  assert.ok(oneDegree > 110000 && oneDegree < 112000);
+});

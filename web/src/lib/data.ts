@@ -4,7 +4,9 @@ import type {
   Employee,
   Holiday,
   Location,
+  PayPeriod,
   PayRule,
+  PtoEntry,
   PayRun,
   PayStub,
   Punch,
@@ -144,6 +146,12 @@ export async function getAvailability(employeeId: string): Promise<Availability[
   });
 }
 
+export async function getPayPeriods(): Promise<PayPeriod[]> {
+  return pb.collection("pay_periods").getFullList<PayPeriod>({
+    sort: "-period_start",
+  });
+}
+
 export async function getPayRuns(): Promise<PayRun[]> {
   return pb.collection("pay_runs").getFullList<PayRun>({
     sort: "-period_start",
@@ -160,6 +168,13 @@ export async function getPayStubs(runId: string): Promise<PayStub[]> {
 
 export async function getPayRules(): Promise<PayRule[]> {
   return pb.collection("pay_rules").getFullList<PayRule>({ sort: "name" });
+}
+
+export async function getPtoEntries(employeeId: string): Promise<PtoEntry[]> {
+  return pb.collection("pto_entries").getFullList<PtoEntry>({
+    filter: pb.filter("employee = {:employee}", { employee: employeeId }),
+    sort: "-date",
+  });
 }
 
 export async function getHolidays(): Promise<Holiday[]> {

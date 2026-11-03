@@ -24,6 +24,7 @@ import {
   getEmployee,
   getLocations,
   getPositions,
+  getPtoEntries,
   getPunchesBetween,
   getShiftsBetween,
   getTimeOff,
@@ -36,6 +37,7 @@ import type {
   Employee,
   Location,
   Position,
+  PtoEntry,
   Punch,
   Shift,
   TimeOffRequest,
@@ -51,12 +53,15 @@ import {
   weekStart,
   toDate,
 } from "@/lib/dates";
-import { employmentLabel, fullName, hours, money, titleCase } from "@/lib/format";
+import { employmentLabel, fullName, hours, titleCase } from "@/lib/format";
+import { useMoney } from "@/lib/currency";
 import {
   Avatar,
   Badge,
   Button,
   Input,
+  Label,
+  Modal,
   Select,
   Spinner,
 } from "@/components/ui";
@@ -71,6 +76,7 @@ export default function PersonPage() {
   const id = params.id;
   const { company, user, employee: me } = useAuth();
   const toast = useToast();
+  const money = useMoney();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);
   const weekStartDate = weekStart(today, Number(company?.week_start ?? "1"));
@@ -82,6 +88,7 @@ export default function PersonPage() {
   const [punches, setPunches] = useState<Punch[]>([]);
   const [sheets, setSheets] = useState<Timesheet[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [ptoEntries, setPtoEntries] = useState<PtoEntry[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -91,6 +98,8 @@ export default function PersonPage() {
   const [availForm, setAvailForm] = useState({ weekday: "1", start: "09:00", end: "17:00" });
   const [availBusy, setAvailBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [ptoOpen, setPtoOpen] = useState(false);
+  const [ptoForm, setPtoForm] = useState({ type: "adjustment", hours: "0", note: "" });
 
   const load = useCallback(async () => {
     if (!id || !company) return;
@@ -99,7 +108,7 @@ export default function PersonPage() {
       const weekEnd = toUtcIso(addDaysStr(weekStartDate, 7), "00:00", tz);
       const monthAgo = toUtcIso(addDaysStr(today, -30), "00:00", tz);
       const tomorrow = toUtcIso(addDaysStr(today, 1), "00:00", tz);
-      const [p, s, av, off, pu, ts, docs, locs, depts, pos] = await Promise.all([
+      const [p, s, av, off, pu, ts, docs, pto, locs, depts, pos] = await Promise.all([
         getEmployee(id),
         getShiftsBetween(weekIso, addDaysStr(weekEnd.slice(0, 10), 30) + " 00:00:00.000Z", { employee: id }),
         getAvailability(id),
@@ -107,6 +116,7 @@ export default function PersonPage() {
         getPunchesBetween(id, monthAgo, tomorrow),
         getTimesheets({ employee: id }),
         getDocuments(id),
+        getPtoEntries(id),
         getLocations(),
         getDepartments(),
         getPositions(),
@@ -118,6 +128,7 @@ export default function PersonPage() {
       setPunches(pu);
       setSheets(ts);
       setDocuments(docs);
+      setPtoEntries(pto);
       setLocations(locs);
       setDepartments(depts);
       setPositions(pos);
@@ -170,6 +181,28 @@ export default function PersonPage() {
       })
       await load()
       toast(archiving ? "Person archived." : "Person restored.")
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    }
+  }
+
+  async function adjustPto() {
+    if (!person) return;
+    try {
+      const hours = Number(ptoForm.hours)
+      if (!hours) throw new Error("Enter a positive or negative adjustment.")
+      await pb.collection("pto_entries").create({
+        company: person.company,
+        employee: person.id,
+        date: new Date().toISOString(),
+        type: ptoForm.type,
+        hours,
+        note: ptoForm.note || "Manual adjustment",
+      })
+      setPtoOpen(false)
+      setPtoForm({ type: "adjustment", hours: "0", note: "" })
+      await load()
+      toast("PTO balance updated.")
     } catch (err) {
       toast(errorMessage(err), "error")
     }
@@ -258,7 +291,10 @@ export default function PersonPage() {
     );
   }
 
-  const canEdit = user?.id === person.user || user?.role === "admin" || user?.role === "manager" || me?.id === person.id;
+  const canManage = user?.role === "admin" || user?.role === "manager";
+  const isSelf = user?.id === person.user || me?.id === person.id;
+  const canEditProfile = canManage;
+  const canEditAvailability = canManage || isSelf;
   const tenureStart = person.hire_date ? toDate(person.hire_date) : null;
   const tenureMonths = tenureStart ? Math.max(0, Math.floor((Date.now() - tenureStart.getTime()) / (30 * 86400000))) : 0;
 
@@ -287,17 +323,19 @@ export default function PersonPage() {
               {person.employee_number && <span className="font-mono">{person.employee_number}</span>}
             </div>
           </div>
-          {canEdit && (
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
+            {canEditProfile && (
               <Button variant="outline" onClick={() => setEditOpen(true)}>
                 <Pencil className="size-4" /> Edit profile
               </Button>
+            )}
+            {canManage && (
               <Button variant="outline" onClick={() => void toggleArchive()}>
                 {person.status === "archived" ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
                 {person.status === "archived" ? "Restore" : "Archive"}
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 border-t border-line sm:grid-cols-4">
           {[
@@ -350,7 +388,7 @@ export default function PersonPage() {
                     {(byDay[String(index)] || []).map((w) => (
                       <span key={w.id} className="inline-flex items-center gap-1 rounded-md bg-[#eef0e7] px-2 py-1 font-mono text-[10px] text-[#3e5b3d]">
                         {w.start_time}–{w.end_time}
-                        {canEdit && (
+                        {canEditAvailability && (
                           <button onClick={() => removeAvailability(w)} className="text-[#7f8f77] hover:text-danger" title="Remove">
                             <Trash2 className="size-2.5" />
                           </button>
@@ -361,7 +399,7 @@ export default function PersonPage() {
                 </div>
               ))}
             </div>
-            {canEdit && (
+            {canEditAvailability && (
               <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-t border-line bg-[#f7f4ec] p-3">
                 <Select value={availForm.weekday} onChange={(e) => setAvailForm({ ...availForm, weekday: e.target.value })} className="h-9 text-xs">
                   {WEEKDAYS.map((day, index) => <option key={day} value={String(index)}>{day.slice(0, 3)}</option>)}
@@ -376,11 +414,13 @@ export default function PersonPage() {
           <section className="panel-raised overflow-hidden">
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <p className="text-sm font-semibold">Documents</p>
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-raised px-2.5 py-1.5 text-[11px] font-medium transition hover:border-line-strong">
-                <Upload className="size-3" />
-                {uploading ? "Uploading…" : "Upload"}
-                <input type="file" className="hidden" onChange={(e) => void uploadDocument(e.target.files?.[0] || null)} />
-              </label>
+              {canManage && (
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-raised px-2.5 py-1.5 text-[11px] font-medium transition hover:border-line-strong">
+                  <Upload className="size-3" />
+                  {uploading ? "Uploading…" : "Upload"}
+                  <input type="file" className="hidden" onChange={(e) => void uploadDocument(e.target.files?.[0] || null)} />
+                </label>
+              )}
             </div>
             <div className="divide-y divide-line">
               {documents.map((doc) => (
@@ -396,7 +436,7 @@ export default function PersonPage() {
                   >
                     Open
                   </button>
-                  {canEdit && (
+                  {canManage && (
                     <button onClick={() => void removeDocument(doc)} className="text-muted hover:text-danger">
                       <Trash2 className="size-3.5" />
                     </button>
@@ -447,6 +487,36 @@ export default function PersonPage() {
 
           <section className="panel-raised overflow-hidden">
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold">PTO ledger</p>
+                <p className="mt-0.5 text-xs text-muted">Balance {hours(person.pto_balance_hours)}</p>
+              </div>
+              {canManage && (
+                <Button variant="ghost" size="sm" onClick={() => setPtoOpen(true)}>
+                  <Plus className="size-3.5" /> Adjust
+                </Button>
+              )}
+            </div>
+            <div className="divide-y divide-line">
+              {ptoEntries.slice(0, 8).map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between gap-3 px-5 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium capitalize">{entry.type}</p>
+                    <p className="truncate text-[10px] text-muted">
+                      {formatDate(entry.date, "UTC")} · {entry.note || "—"}
+                    </p>
+                  </div>
+                  <span className={`font-mono text-xs tabular ${entry.hours < 0 ? "text-accent" : "text-sage"}`}>
+                    {entry.hours > 0 ? "+" : ""}{hours(entry.hours)}
+                  </span>
+                </div>
+              ))}
+              {ptoEntries.length === 0 && <p className="px-5 py-6 text-center text-xs text-muted">No ledger entries yet.</p>}
+            </div>
+          </section>
+
+          <section className="panel-raised overflow-hidden">
+            <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <p className="text-sm font-semibold">Recent punches</p>
               <Badge tone="neutral">{punches.length}</Badge>
             </div>
@@ -485,6 +555,35 @@ export default function PersonPage() {
           </section>
         </div>
       </div>
+
+      <Modal
+        open={ptoOpen}
+        onClose={() => setPtoOpen(false)}
+        title="Adjust PTO"
+        description="Positive adds hours; negative deducts. This writes an auditable ledger entry."
+        footer={<><Button variant="ghost" onClick={() => setPtoOpen(false)}>Cancel</Button><Button onClick={adjustPto}>Save adjustment</Button></>}
+      >
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label>Type</Label>
+              <Select value={ptoForm.type} onChange={(e) => setPtoForm({ ...ptoForm, type: e.target.value })}>
+                <option value="adjustment">Adjustment</option>
+                <option value="accrual">Accrual</option>
+                <option value="carryover">Carryover</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Hours</Label>
+              <Input type="number" step="0.25" value={ptoForm.hours} onChange={(e) => setPtoForm({ ...ptoForm, hours: e.target.value })} />
+            </div>
+          </div>
+          <div>
+            <Label>Note</Label>
+            <Input value={ptoForm.note} onChange={(e) => setPtoForm({ ...ptoForm, note: e.target.value })} placeholder="Why this adjustment?" />
+          </div>
+        </div>
+      </Modal>
 
       <PersonModal
         open={editOpen}

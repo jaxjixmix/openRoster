@@ -1,27 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, LogIn, LogOut, MapPin, Users } from "lucide-react";
+import { Clock3, LogIn, LogOut, MapPin, Pencil, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { pb } from "@/lib/pb";
 import { errorMessage, getEmployees, getPunchesBetween, getShiftsBetween, getTimesheets } from "@/lib/data";
 import type { Employee, Punch, Shift, Timesheet } from "@/lib/types";
 import {
   addDaysStr,
   dateInTz,
   durationHours,
+  formatInTimeZone,
   formatTime,
+  toDate,
   todayIn,
   toUtcIso,
   weekStart,
-  toDate,
 } from "@/lib/dates";
 import { fullName, hours, titleCase } from "@/lib/format";
-import { Avatar, Badge, PageHeader, Select, Spinner } from "@/components/ui";
+import { Avatar, Badge, Button, Input, Label, Modal, PageHeader, Select, Spinner } from "@/components/ui";
 import { ClockCard } from "@/components/clock-card";
 import { ShiftRow } from "@/components/shift-row";
+import { useToast } from "@/lib/toast";
 
 export default function TimeClockPage() {
   const { company, employee, isManager } = useAuth();
+  const toast = useToast();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);
   const start = weekStart(today, Number(company?.week_start ?? "1"));
@@ -33,6 +37,8 @@ export default function TimeClockPage() {
   const [selected, setSelected] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [editingPunch, setEditingPunch] = useState<Punch | null>(null);
+  const [punchForm, setPunchForm] = useState({ punched_at: "", type: "in", reason: "" });
 
   const load = useCallback(async () => {
     if (!company) return;
@@ -62,6 +68,36 @@ export default function TimeClockPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  function openPunch(punch: Punch) {
+    setEditingPunch(punch)
+    setPunchForm({
+      punched_at: formatInTimeZone(toDate(punch.punched_at), tz, "yyyy-MM-dd'T'HH:mm"),
+      type: punch.type,
+      reason: "",
+    })
+  }
+
+  async function savePunch() {
+    if (!editingPunch) return
+    try {
+      const [date, time] = punchForm.punched_at.split("T")
+      await pb.send("/api/openroster/punches/correct", {
+        method: "POST",
+        body: {
+          punch: editingPunch.id,
+          type: punchForm.type,
+          punched_at: toUtcIso(date, time, tz),
+          reason: punchForm.reason,
+        },
+      })
+      setEditingPunch(null)
+      await load()
+      toast("Punch corrected. Regenerate the timesheet if needed.")
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    }
+  }
 
   useEffect(() => {
     if (isManager && !selected && employee) setSelected(employee.id);
@@ -255,6 +291,11 @@ export default function TimeClockPage() {
                     <p className="text-[10px] text-muted">{p.expand?.location?.name || "—"} · {p.source || "web"}</p>
                   </div>
                   <span className="font-mono text-[10px] text-muted">{formatTime(p.punched_at, tz)}</span>
+                  {isManager && (
+                    <button onClick={() => openPunch(p)} className="rounded-md p-1 text-muted hover:bg-black/5 hover:text-ink" title="Correct punch">
+                      <Pencil className="size-3.5" />
+                    </button>
+                  )}
                 </div>
               ))}
               {(isManager ? punches : punches.filter((p) => p.employee === employee?.id)).length === 0 && (
@@ -264,6 +305,34 @@ export default function TimeClockPage() {
           </section>
         </div>
       </div>
+
+      <Modal
+        open={!!editingPunch}
+        onClose={() => setEditingPunch(null)}
+        title="Correct punch"
+        description="Corrections are audited. Regenerate the timesheet after changing a punch."
+        footer={<><Button variant="ghost" onClick={() => setEditingPunch(null)}>Cancel</Button><Button onClick={savePunch}>Save correction</Button></>}
+      >
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label>Time</Label>
+              <Input type="datetime-local" value={punchForm.punched_at} onChange={(e) => setPunchForm({ ...punchForm, punched_at: e.target.value })} />
+            </div>
+            <div>
+              <Label>Type</Label>
+              <Select value={punchForm.type} onChange={(e) => setPunchForm({ ...punchForm, type: e.target.value })}>
+                <option value="in">Clock in</option>
+                <option value="out">Clock out</option>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>Reason</Label>
+            <Input value={punchForm.reason} onChange={(e) => setPunchForm({ ...punchForm, reason: e.target.value })} placeholder="Forgot to clock out, wrong location, etc." />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

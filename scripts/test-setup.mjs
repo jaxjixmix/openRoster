@@ -101,7 +101,10 @@ async function main() {
     assert.equal(bootstrap.data.company.name, "Setup Test Co");
     assert.equal(bootstrap.data.is_manager, true);
     assert.equal(bootstrap.data.employee.first_name, "Test");
-    console.log("PASS setup admin bootstrap");
+
+    const periods = await request("/api/collections/pay_periods/records?perPage=200", { token });
+    assert.ok(periods.data.items.length > 0, "setup generates pay periods");
+    console.log("PASS setup admin bootstrap and pay periods");
 
     const again = await request("/api/openroster/setup", {
       method: "POST",

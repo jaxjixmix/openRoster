@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Ban,
+  CalendarRange,
   ChevronDown,
   Download,
   FileText,
@@ -17,12 +18,13 @@ import { useAuth } from "@/lib/auth";
 import {
   errorMessage,
   getEmployees,
+  getPayPeriods,
   getPayRuns,
   getPayRules,
   getPayStubs,
   getTimesheets,
 } from "@/lib/data";
-import type { Employee, PayRule, PayRun, PayStub, PayrollPreview, Timesheet } from "@/lib/types";
+import type { Employee, PayPeriod, PayRule, PayRun, PayStub, PayrollPreview, Timesheet } from "@/lib/types";
 import {
   addDaysStr,
   formatDate,
@@ -30,30 +32,35 @@ import {
   todayIn,
   weekStart,
 } from "@/lib/dates";
-import { fullName, hours, money, titleCase } from "@/lib/format";
+import { fullName, hours, titleCase } from "@/lib/format";
+import { useMoney } from "@/lib/currency";
 import {
   Avatar,
   Badge,
   Button,
   EmptyState,
-  Input,
   Modal,
   PageHeader,
+  Select,
   Spinner,
   StatCard,
   Tabs,
 } from "@/components/ui";
 import { useToast } from "@/lib/toast";
+import { downloadCsv } from "@/lib/csv";
 
 export default function PayrollPage() {
   const { company, isManager } = useAuth();
   const router = useRouter();
   const toast = useToast();
+  const money = useMoney();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);
   const defaultStart = weekStart(today, Number(company?.week_start ?? "1"));
   const [periodStart, setPeriodStart] = useState(defaultStart);
   const [periodEnd, setPeriodEnd] = useState(addDaysStr(defaultStart, 6));
+  const [periods, setPeriods] = useState<PayPeriod[]>([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [preview, setPreview] = useState<PayrollPreview | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [runs, setRuns] = useState<PayRun[]>([]);
@@ -66,6 +73,23 @@ export default function PayrollPage() {
   const [detailRun, setDetailRun] = useState<PayRun | null>(null);
   const [detailStubs, setDetailStubs] = useState<PayStub[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  const loadPeriods = useCallback(async () => {
+    const rows = await getPayPeriods();
+    setPeriods(rows);
+    const open = rows.find((period) => period.status === "open" && period.period_start.slice(0, 10) <= today && period.period_end.slice(0, 10) >= today);
+    const current = open || rows.find((period) => period.period_start.slice(0, 10) <= today && period.period_end.slice(0, 10) >= today) || rows[0];
+    if (current) {
+      setSelectedPeriodId(current.id);
+      setPeriodStart(current.period_start.slice(0, 10));
+      setPeriodEnd(current.period_end.slice(0, 10));
+    }
+  }, [today]);
+
+  useEffect(() => {
+    if (!isManager) return;
+    loadPeriods().catch((err) => setError(errorMessage(err)));
+  }, [isManager, loadPeriods]);
 
   const load = useCallback(async () => {
     try {
@@ -108,6 +132,24 @@ export default function PayrollPage() {
 
   const approvedCount = sheets.filter((s) => s.status === "approved" || s.status === "paid").length;
   const pendingCount = sheets.filter((s) => s.status !== "approved" && s.status !== "paid").length;
+  const selectedPeriod = periods.find((period) => period.id === selectedPeriodId);
+
+  async function generatePeriods() {
+    setBusy(true);
+    try {
+      const year = new Date().getUTCFullYear();
+      const result = await pb.send<{ created: number; generated: number }>("/api/openroster/pay_periods/generate", {
+        method: "POST",
+        body: { from: `${year}-01-01`, to: `${year + 1}-12-31` },
+      });
+      await loadPeriods();
+      toast(result.created ? `Created ${result.created} pay periods.` : "Pay periods are already up to date.", "info");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function runPayroll() {
     setBusy(true);
@@ -132,7 +174,7 @@ export default function PayrollPage() {
         method: "POST",
         body: { run: run.id, status },
       });
-      await load();
+      await Promise.all([load(), loadPeriods()]);
       toast(`Pay run marked ${status}.`);
     } catch (err) {
       toast(errorMessage(err), "error");
@@ -191,10 +233,33 @@ export default function PayrollPage() {
         description="Turn approved hours into a draft pay run. No tax filing, no surprises."
         actions={
           <>
+            <Button variant="outline" size="sm" onClick={generatePeriods} loading={busy}>
+              <CalendarRange className="size-3.5" /> Periods
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadCsv(`pay-preview-${periodStart}.csv`, (preview?.stubs || []).map((stub) => {
+                const employee = employeeById.get(stub.employee);
+                return {
+                  employee: fullName(employee),
+                  regular_hours: stub.regular_hours,
+                  overtime_hours: stub.overtime_hours,
+                  pto_hours: stub.pto_hours,
+                  gross_pay: stub.gross_pay,
+                  employee_taxes: stub.employee_taxes,
+                  employee_deductions: stub.employee_deductions,
+                  net_pay: stub.net_pay,
+                };
+              }))}
+              disabled={!preview?.stubs.length}
+            >
+              <Download className="size-3.5" /> Export CSV
+            </Button>
             <Button variant="outline" size="sm" onClick={load} loading={busy}>
               <Play className="size-3.5" /> Recalculate
             </Button>
-            <Button size="sm" onClick={runPayroll} loading={busy} disabled={!preview?.stubs.length}>
+            <Button size="sm" onClick={runPayroll} loading={busy} disabled={!preview?.stubs.length || !selectedPeriod || selectedPeriod.status === "closed"}>
               <Download className="size-3.5" /> Create draft run
             </Button>
           </>
@@ -207,28 +272,52 @@ export default function PayrollPage() {
         </div>
       )}
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-        <div>
-          <label className="label mb-1.5 block">Period start</label>
-          <Input
-            type="date"
-            value={periodStart}
-            onChange={(e) => {
-              setPeriodStart(e.target.value);
-              setPeriodEnd(addDaysStr(e.target.value, 6));
-            }}
-          />
+      {periods.length ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-[1.6fr_1fr_auto] sm:items-end">
+          <div>
+            <label className="label mb-1.5 block">Pay period</label>
+            <Select
+              value={selectedPeriodId}
+              onChange={(e) => {
+                const period = periods.find((p) => p.id === e.target.value);
+                setSelectedPeriodId(e.target.value);
+                if (period) {
+                  setPeriodStart(period.period_start.slice(0, 10));
+                  setPeriodEnd(period.period_end.slice(0, 10));
+                }
+              }}
+            >
+              {periods.map((period) => (
+                <option key={period.id} value={period.id}>
+                  {monthDay(period.period_start.slice(0, 10))} – {monthDay(period.period_end.slice(0, 10))} · {period.status}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="label mb-1.5 block">Pay date</label>
+            <div className="field flex items-center text-sm text-muted">
+              {selectedPeriod?.pay_date ? formatDate(selectedPeriod.pay_date, "UTC") : "—"}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pb-0.5">
+            <Badge tone={pendingCount ? "warning" : "success"}>
+              {approvedCount} approved · {pendingCount} pending
+            </Badge>
+            {selectedPeriod?.status === "closed" && <Badge tone="neutral">Closed</Badge>}
+          </div>
         </div>
-        <div>
-          <label className="label mb-1.5 block">Period end</label>
-          <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+      ) : (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold">No pay periods yet</p>
+            <p className="text-xs text-muted">Generate a calendar from the company pay frequency ({company?.pay_frequency || "biweekly"}).</p>
+          </div>
+          <Button size="sm" onClick={generatePeriods} loading={busy}>
+            <CalendarRange className="size-3.5" /> Generate pay periods
+          </Button>
         </div>
-        <div className="flex items-center gap-2 pb-0.5">
-          <Badge tone={pendingCount ? "warning" : "success"}>
-            {approvedCount} approved · {pendingCount} pending
-          </Badge>
-        </div>
-      </div>
+      )}
 
       <Tabs
         value={tab}

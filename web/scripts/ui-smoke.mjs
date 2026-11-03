@@ -109,6 +109,19 @@ async function main() {
     assert.equal(await page.locator("h1").first().innerText(), "Payroll");
     console.log("PASS payroll");
 
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`${WEB_URL}/login`, { waitUntil: "networkidle" });
+    await page.fill("#email", "sam@harborhearth.co");
+    await page.fill("#password", "OpenRoster123!");
+    await page.click("button[type=submit]");
+    await page.waitForURL(`${WEB_URL}/`, { timeout: 20000 });
+    await page.goto(`${WEB_URL}/me`, { waitUntil: "networkidle" });
+    await page.waitForURL(/\/people\//, { timeout: 20000 });
+    await page.waitForTimeout(900);
+    assert.match(await page.locator("h1").first().innerText(), /Sam Rivera/);
+    assert.match(await page.locator("main").innerText(), /Weekly availability/);
+    console.log("PASS employee self-service");
+
     assert.deepEqual([...new Set(errors)], []);
     console.log("ALL UI TESTS PASSED");
   } finally {

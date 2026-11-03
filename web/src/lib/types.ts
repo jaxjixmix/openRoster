@@ -26,6 +26,8 @@ export interface Company extends BaseRecord {
   overtime_weekly_hours: number;
   overtime_daily_hours: number;
   overtime_multiplier: number;
+  pto_accrual_hours_per_period?: number;
+  pto_accrual_hours_per_hour?: number;
   address?: string;
   phone?: string;
   logo?: string;
@@ -184,6 +186,16 @@ export interface PayRule extends BaseRecord {
   active?: boolean;
 }
 
+export interface PayPeriod extends BaseRecord {
+  company: string;
+  period_start: string;
+  period_end: string;
+  pay_date?: string;
+  status: "open" | "closed";
+  locked_at?: string;
+  created_by?: string;
+}
+
 export interface PayRun extends BaseRecord {
   company: string;
   period_start: string;
@@ -225,6 +237,19 @@ export interface PayLine {
   rate: number;
   amount: number;
   employer: boolean;
+}
+
+export interface PtoEntry extends BaseRecord {
+  company: string;
+  employee: string;
+  date: string;
+  type: "accrual" | "usage" | "adjustment" | "carryover";
+  hours: number;
+  note?: string;
+  time_off_request?: string;
+  period_start?: string;
+  created_by?: string;
+  expand?: { employee?: Employee };
 }
 
 export interface Holiday extends BaseRecord {

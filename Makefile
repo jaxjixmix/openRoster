@@ -4,7 +4,7 @@ PB_URL ?= http://127.0.0.1:$(PB_PORT)
 ADMIN_EMAIL ?= admin@openroster.local
 ADMIN_PASSWORD ?=
 
-.PHONY: setup init pb web admin migrate seed demo dev-pb dev-web build test test-api test-ui docker
+.PHONY: setup init pb web admin migrate seed demo dev-pb dev-web build test test-api test-ui backup docker
 
 setup: pb web
 
@@ -56,6 +56,9 @@ test-ui:
 	cd web && NEXT_PUBLIC_PB_URL=http://127.0.0.1:18097 npm run build
 	cd web && node scripts/ui-smoke.mjs
 	cd web && node scripts/ui-setup.mjs
+
+backup:
+	./scripts/backup.sh
 
 docker:
 	docker compose up --build

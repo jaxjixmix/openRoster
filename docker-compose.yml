@@ -28,6 +28,11 @@ services:
       pocketbase:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pb_data:

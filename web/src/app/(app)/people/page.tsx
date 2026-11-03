@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Search, UserCog, Users } from "lucide-react";
+import { Download, Plus, Search, UserCog, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   errorMessage,
@@ -12,7 +12,8 @@ import {
   getPositions,
 } from "@/lib/data";
 import type { Department, Employee, Location, Position } from "@/lib/types";
-import { employmentLabel, fullName, hours, money } from "@/lib/format";
+import { employmentLabel, fullName, hours } from "@/lib/format";
+import { useMoney } from "@/lib/currency";
 import {
   Avatar,
   Badge,
@@ -24,8 +25,10 @@ import {
   StatCard,
 } from "@/components/ui";
 import { PersonModal } from "@/components/person-modal";
+import { downloadCsv } from "@/lib/csv";
 
 export default function PeoplePage() {
+  const money = useMoney();
   const { isManager } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -97,9 +100,28 @@ export default function PeoplePage() {
         title="People"
         description="Profiles, pay, availability and everything that makes a roster work."
         actions={
-          <Button onClick={() => { setEditing(null); setModalOpen(true); }}>
-            <Plus className="size-4" /> Add person
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => downloadCsv("people.csv", filtered.map((employee) => ({
+                name: fullName(employee),
+                email: employee.email || "",
+                position: employee.expand?.position?.name || "",
+                location: employee.expand?.location?.name || "",
+                employment_type: employee.employment_type || "",
+                pay_type: employee.pay_type || "",
+                pay_rate: employee.pay_rate || 0,
+                pto_balance_hours: employee.pto_balance_hours || 0,
+                status: employee.status || "",
+              })))}
+              disabled={!filtered.length}
+            >
+              <Download className="size-4" /> Export CSV
+            </Button>
+            <Button onClick={() => { setEditing(null); setModalOpen(true); }}>
+              <Plus className="size-4" /> Add person
+            </Button>
+          </>
         }
       />
 

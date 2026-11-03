@@ -18,6 +18,8 @@ interface Props {
   defaultDate?: string;
   tz: string;
   canEdit: boolean;
+  canClaim?: boolean;
+  onClaim?: () => void;
   employees: Employee[];
   locations: Location[];
   departments: Department[];
@@ -32,6 +34,8 @@ export function ShiftModal({
   defaultDate,
   tz,
   canEdit,
+  canClaim = false,
+  onClaim,
   employees,
   locations,
   departments,
@@ -171,6 +175,11 @@ export function ShiftModal({
             )}
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <Button onClick={save} loading={busy}>{shift ? "Save changes" : "Add shift"}</Button>
+          </>
+        ) : canClaim && onClaim ? (
+          <>
+            <Button variant="ghost" onClick={onClose}>Close</Button>
+            <Button onClick={onClaim}>Claim shift</Button>
           </>
         ) : (
           <Button variant="outline" onClick={onClose}>Close</Button>

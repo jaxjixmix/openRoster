@@ -6,6 +6,7 @@ import {
   CalendarRange,
   ChevronLeft,
   ChevronRight,
+  Download,
   LayoutGrid,
   Loader2,
   MapPin,
@@ -45,6 +46,7 @@ import { Avatar, Badge, Button, PageHeader, Select, Spinner } from "@/components
 import { ShiftModal } from "@/components/shift-modal";
 import { ShiftRow, shiftColor } from "@/components/shift-row";
 import { useToast } from "@/lib/toast";
+import { downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/cn";
 
 const START_MIN = 6 * 60;
@@ -224,6 +226,18 @@ export default function SchedulePage() {
     }
   }
 
+  async function claimShift() {
+    if (!selected) return
+    try {
+      await pb.send("/api/openroster/shifts/claim", { method: "POST", body: { shift: selected.id } })
+      toast("Shift claimed. It is now on your schedule.")
+      setModalOpen(false)
+      await load()
+    } catch (err) {
+      toast(errorMessage(err), "error")
+    }
+  }
+
   function openNew(date: string) {
     setSelected(null);
     setDefaultDate(date);
@@ -251,6 +265,23 @@ export default function SchedulePage() {
               <Button variant="outline" size="sm" onClick={autoFill} loading={busy}>
                 {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
                 Auto-fill
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadCsv(`schedule-${start}.csv`, visibleShifts.map((shift) => ({
+                  date: dateInTz(shift.starts_at, tz),
+                  start: formatTime(shift.starts_at, tz),
+                  end: formatTime(shift.ends_at, tz),
+                  employee: shift.expand?.employee ? fullName(shift.expand.employee) : "OPEN",
+                  position: shift.expand?.position?.name || "",
+                  location: shift.expand?.location?.name || "",
+                  status: shift.status,
+                  source: shift.source || "",
+                })))}
+                disabled={!visibleShifts.length}
+              >
+                <Download className="size-3.5" /> Export
               </Button>
               <Button size="sm" onClick={() => openNew(today)}>
                 <Plus className="size-3.5" /> Add shift
@@ -551,6 +582,8 @@ export default function SchedulePage() {
         defaultDate={defaultDate}
         tz={tz}
         canEdit={isManager}
+        canClaim={!isManager && !!selected && !selected.employee && selected.status === "published"}
+        onClaim={claimShift}
         employees={employees}
         locations={locations}
         departments={departments}

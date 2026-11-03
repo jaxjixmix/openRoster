@@ -31,6 +31,23 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
     return h.bad(e, "No open clock-in to close.", 409)
   }
 
+  const punchLocationId = body.location || employee.getString("location")
+  if (punchLocationId && typeof body.lat === "number" && typeof body.lng === "number") {
+    let location = null
+    try { location = e.app.findRecordById("locations", punchLocationId) } catch (err) {}
+    if (location) {
+      const lat = location.getFloat("lat")
+      const lng = location.getFloat("lng")
+      const radius = location.getFloat("geofence_meters") || 0
+      if (radius > 0 && (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001)) {
+        const distance = h.distanceMeters(body.lat, body.lng, lat, lng)
+        if (distance > radius) {
+          return h.bad(e, "You are " + distance + "m from " + location.getString("name") + ". Move within " + radius + "m to clock in.", 422)
+        }
+      }
+    }
+  }
+
   const punch = new Record(e.app.findCollectionByNameOrId("punches"))
   punch.set("employee", employee.id)
   if (body.location) punch.set("location", body.location)
@@ -43,14 +60,17 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
   punch.set("created_by", e.auth.id)
   e.app.save(punch)
 
-  const todayStart = new Date().toISOString().slice(0, 10) + " 00:00:00.000Z"
+  const offsetMinutes = Number(body.offset_minutes || 0)
+  const localDay = new Date(Date.now() + offsetMinutes * 60000).toISOString().slice(0, 10)
+  const dayStart = new Date(Date.parse(localDay + "T00:00:00Z") - offsetMinutes * 60000).toISOString()
+  const dayEnd = new Date(Date.parse(localDay + "T00:00:00Z") + 86400000 - offsetMinutes * 60000).toISOString()
   const todays = e.app.findRecordsByFilter(
     "punches",
-    "employee = {:employee} && punched_at >= {:start}",
+    "employee = {:employee} && punched_at >= {:start} && punched_at < {:end}",
     "punched_at",
     100,
     0,
-    { employee: employee.id, start: todayStart }
+    { employee: employee.id, start: dayStart, end: dayEnd }
   )
   let worked = 0
   let openAt = null
@@ -347,6 +367,34 @@ routerAdd("POST", "/api/openroster/timesheets/generate", (e) => {
   return e.json(200, { sheets: sheets, period_start: startDate, period_end: endDate })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ claim an open shift
+routerAdd("POST", "/api/openroster/shifts/claim", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!e.auth) return h.bad(e, "Sign in first.", 401)
+  const body = e.requestInfo().body || {}
+  if (!body.shift) return h.bad(e, "Shift is required.")
+  const employee = h.employeeForUser(e.app, e.auth.id)
+  if (!employee) return h.bad(e, "No employee profile is linked to this account.", 404)
+
+  const shift = e.app.findRecordById("shifts", body.shift)
+  if (shift.getString("employee")) return h.bad(e, "That shift is already assigned.", 409)
+  if (shift.getString("status") !== "published") return h.bad(e, "That shift is not published.", 409)
+
+  const assignmentError = h.shiftAssignmentError(e.app, shift, employee.id, shift.id)
+  if (assignmentError) return h.bad(e, assignmentError)
+
+  e.app.runInTransaction((txApp) => {
+    const record = txApp.findRecordById("shifts", shift.id)
+    record.set("employee", employee.id)
+    record.set("source", "swap")
+    txApp.save(record)
+    shift.set("employee", employee.id)
+    shift.set("source", "swap")
+  })
+  h.audit(e.app, e.auth, "shifts", shift.id, "schedule", "Claimed open shift")
+  return e.json(200, { shift: shift })
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ timesheet approval
 routerAdd("POST", "/api/openroster/timesheets/approve", (e) => {
   const h = require(`${__hooks}/lib.js`)
@@ -380,6 +428,52 @@ routerAdd("POST", "/api/openroster/timesheets/approve", (e) => {
   })
 
   return e.json(200, { approved: approved })
+}, $apis.requireAuth())
+
+// ------------------------------------------------------------------ pay periods
+routerAdd("POST", "/api/openroster/pay_periods/generate", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  const from = String(body.from || "")
+  const to = String(body.to || (from ? h.addDays(from, 365) : ""))
+  if (!from || !to) return h.bad(e, "from and to are required (YYYY-MM-DD).")
+  if (to < from) return h.bad(e, "to must be after from.")
+  const company = h.companyOf(e.app, e.auth)
+  if (!company) return h.bad(e, "Company not configured.", 404)
+
+  const periods = h.generatePayPeriods(
+    company.getString("pay_frequency") || "biweekly",
+    from,
+    to,
+    parseInt(company.getString("week_start") || "1", 10),
+    5
+  )
+
+  let created = 0
+  e.app.runInTransaction((txApp) => {
+    periods.forEach((period) => {
+      try {
+        txApp.findFirstRecordByFilter(
+          "pay_periods",
+          "company = {:company} && period_start = {:start}",
+          { company: company.id, start: period.start + " 00:00:00.000Z" }
+        )
+        return
+      } catch (err) {}
+      const record = new Record(txApp.findCollectionByNameOrId("pay_periods"))
+      record.set("company", company.id)
+      record.set("period_start", period.start + " 00:00:00.000Z")
+      record.set("period_end", period.end + " 00:00:00.000Z")
+      record.set("pay_date", period.pay_date + " 00:00:00.000Z")
+      record.set("status", "open")
+      record.set("created_by", e.auth.id)
+      txApp.save(record)
+      created++
+    })
+  })
+
+  return e.json(200, { created: created, generated: periods.length })
 }, $apis.requireAuth())
 
 // ------------------------------------------------------------------ payroll
@@ -447,6 +541,16 @@ routerAdd("POST", "/api/openroster/payroll/status", (e) => {
         txApp.save(sheet)
         paidSheets++
       })
+      try {
+        const period = txApp.findFirstRecordByFilter(
+          "pay_periods",
+          "company = {:company} && period_start = {:start}",
+          { company: run.getString("company"), start: run.getString("period_start") }
+        )
+        period.set("status", "closed")
+        period.set("locked_at", new Date().toISOString())
+        txApp.save(period)
+      } catch (err) {}
       return
     }
 
@@ -455,6 +559,16 @@ routerAdd("POST", "/api/openroster/payroll/status", (e) => {
     run.set("voided_at", new Date().toISOString())
     run.set("void_reason", String(body.reason || "Voided by manager"))
     txApp.save(run)
+    try {
+      const period = txApp.findFirstRecordByFilter(
+        "pay_periods",
+        "company = {:company} && period_start = {:start}",
+        { company: run.getString("company"), start: run.getString("period_start") }
+      )
+      period.set("status", "open")
+      period.set("locked_at", "")
+      txApp.save(period)
+    } catch (err) {}
   })
 
   const saved = e.app.findRecordById("pay_runs", body.run)
@@ -493,6 +607,32 @@ routerAdd("GET", "/api/openroster/bootstrap", (e) => {
   })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ punch correction
+routerAdd("POST", "/api/openroster/punches/correct", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  const reason = String(body.reason || "").trim()
+  if (!body.punch) return h.bad(e, "Punch is required.")
+  if (!reason) return h.bad(e, "A correction reason is required.")
+
+  let beforeState = null
+  let afterState = null
+  e.app.runInTransaction((txApp) => {
+    const punch = txApp.findRecordById("punches", body.punch)
+    beforeState = h.snapshot(punch, ["type", "punched_at", "note"])
+    if (body.type === "in" || body.type === "out") punch.set("type", body.type)
+    if (body.punched_at) punch.set("punched_at", body.punched_at)
+    punch.set("note", reason)
+    txApp.save(punch)
+    afterState = h.snapshot(punch, ["type", "punched_at", "note"])
+  })
+
+  const saved = e.app.findRecordById("punches", body.punch)
+  h.audit(e.app, e.auth, "punches", body.punch, "clock", "Corrected punch: " + reason, beforeState, afterState)
+  return e.json(200, { punch: saved })
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ first-run setup
 routerAdd("GET", "/api/openroster/status", (e) => {
   let setupRequired = true
@@ -512,6 +652,7 @@ routerAdd("GET", "/api/openroster/status", (e) => {
 })
 
 routerAdd("POST", "/api/openroster/setup", (e) => {
+  const h = require(`${__hooks}/lib.js`)
   const body = e.requestInfo().body || {}
   const companies = e.app.findRecordsByFilter("companies", "1 = 1", "", 1, 0)
   const users = e.app.findRecordsByFilter("users", "1 = 1", "", 1, 0)
@@ -601,6 +742,19 @@ routerAdd("POST", "/api/openroster/setup", (e) => {
     employee.set("status", "active")
     txApp.save(employee)
 
+    const year = new Date().getUTCFullYear()
+    const periods = h.generatePayPeriods("biweekly", year + "-01-01", (year + 1) + "-12-31", parseInt(weekStart, 10), 5)
+    periods.forEach((period) => {
+      const payPeriod = new Record(txApp.findCollectionByNameOrId("pay_periods"))
+      payPeriod.set("company", company.id)
+      payPeriod.set("period_start", period.start + " 00:00:00.000Z")
+      payPeriod.set("period_end", period.end + " 00:00:00.000Z")
+      payPeriod.set("pay_date", period.pay_date + " 00:00:00.000Z")
+      payPeriod.set("status", "open")
+      payPeriod.set("created_by", user.id)
+      txApp.save(payPeriod)
+    })
+
     ids = { company: company.id, location: location.id, user: user.id, employee: employee.id }
   })
 
@@ -679,6 +833,26 @@ onRecordCreateRequest((e) => {
   }
   if (!h.isManager(e.auth) || !e.record.getString("status")) e.record.set("status", "pending")
   e.next()
+  if (e.record.getString("status") === "approved") h.applyPtoUsage(e.app, e.record)
+}, "time_off_requests")
+
+onRecordUpdateRequest((e) => {
+  const h = require(`${__hooks}/lib.js`)
+  const original = e.record.original()
+  const wasApproved = !!original && original.getString("status") === "approved"
+  e.next()
+  const approved = e.record.getString("status") === "approved"
+  if (approved) h.applyPtoUsage(e.app, e.record)
+  else if (wasApproved) h.removePtoUsage(e.app, e.record.id, e.record.getString("employee"))
+}, "time_off_requests")
+
+onRecordDeleteRequest((e) => {
+  const h = require(`${__hooks}/lib.js`)
+  const id = e.record.id
+  const employeeId = e.record.getString("employee")
+  const wasApproved = e.record.getString("status") === "approved"
+  e.next()
+  if (wasApproved) h.removePtoUsage(e.app, id, employeeId)
 }, "time_off_requests")
 
 onRecordUpdateRequest((e) => {

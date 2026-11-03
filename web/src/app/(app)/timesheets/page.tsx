@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  Download,
   FileText,
   RefreshCw,
 } from "lucide-react";
@@ -24,7 +25,8 @@ import {
   todayIn,
   weekStart,
 } from "@/lib/dates";
-import { fullName, hours, money, titleCase } from "@/lib/format";
+import { fullName, hours, titleCase } from "@/lib/format";
+import { useMoney } from "@/lib/currency";
 import {
   Avatar,
   Badge,
@@ -37,10 +39,12 @@ import {
   Tabs,
 } from "@/components/ui";
 import { useToast } from "@/lib/toast";
+import { downloadCsv } from "@/lib/csv";
 
 export default function TimesheetsPage() {
   const { company, user, employee, isManager } = useAuth();
   const toast = useToast();
+  const money = useMoney();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);
   const [anchor, setAnchor] = useState(today);
@@ -171,6 +175,23 @@ export default function TimesheetsPage() {
         actions={
           isManager ? (
             <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadCsv(`timesheets-${start}.csv`, filtered.map((sheet) => ({
+                  employee: fullName(sheet.expand?.employee),
+                  period_start: sheet.period_start.slice(0, 10),
+                  period_end: sheet.period_end.slice(0, 10),
+                  regular_hours: sheet.regular_hours || 0,
+                  overtime_hours: sheet.overtime_hours || 0,
+                  pto_hours: sheet.pto_hours || 0,
+                  total_hours: sheet.total_hours || 0,
+                  status: sheet.status,
+                })))}
+                disabled={!filtered.length}
+              >
+                <Download className="size-3.5" /> Export CSV
+              </Button>
               <Button variant="outline" size="sm" onClick={generate} loading={busy}>
                 <RefreshCw className="size-3.5" /> Generate from punches
               </Button>
