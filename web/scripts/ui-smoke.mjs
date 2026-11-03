@@ -144,6 +144,14 @@ async function main() {
     assert.equal(await page.locator("h1").first().innerText(), "Time-off calendar");
     console.log("PASS time-off calendar");
 
+    await page.goto(`${WEB_URL}/reports`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    assert.equal(await page.locator("h1").first().innerText(), "Reports");
+    assert.match(await page.locator("main").innerText(), /OT forecast/i);
+    assert.match(await page.locator("main").innerText(), /PTO liability/i);
+    assert.match(await page.locator("main").innerText(), /Labor by location/i);
+    console.log("PASS richer reports");
+
     await page.goto(`${WEB_URL}/templates`, { waitUntil: "networkidle" });
     await page.waitForTimeout(700);
     assert.equal(await page.locator("h1").first().innerText(), "Shift templates");

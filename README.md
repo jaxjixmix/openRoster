@@ -38,7 +38,7 @@ OpenRoster is a **working alpha**. Current release: **v0.4.0-alpha**. The delive
 - **Payroll** — preview and draft runs from approved timesheets, configurable percent/fixed rules, per-stub breakdown, pay history, draft → approved → paid → voided, no destructive deletes.
 - **People** — profiles, pay, availability, documents, certifications, PTO ledger, recent punches, archive/restore.
 - **Time off** — requests, approve/deny queue, balances, month calendar, blackout dates and coverage-conflict warnings.
-- **Reports** — scheduled vs actual hours, labor by department, coverage, overtime watch.
+- **Reports** — date ranges, scheduled vs actual variance, labor by department/location, coverage, OT forecast and PTO liability.
 - **Notifications** — in-app bell with optional email delivery through PocketBase mail settings, including daily certification/document expiry reminders.
 - **Exports** — CSV for timesheets, payroll preview, people and schedules.
 - **Settings** — company, locations, departments, positions, pay rules, holidays, role-based access, audit log.
