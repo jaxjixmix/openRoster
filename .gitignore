@@ -48,3 +48,4 @@ pb/.test-setup-ui-data/
 web/test-results/
 web/playwright-report/
 AGENTS.md
+pb/.test-drag-data/
