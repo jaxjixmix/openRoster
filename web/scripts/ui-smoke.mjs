@@ -76,7 +76,12 @@ async function main() {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => {
-      if (message.type() === "error" && !message.text().includes("ERR_INTERNET_DISCONNECTED")) errors.push(message.text());
+      if (
+        message.type() === "error" &&
+        !message.text().includes("ERR_INTERNET_DISCONNECTED") &&
+        !message.text().includes("ERR_CONNECTION_REFUSED") &&
+        !message.text().includes("ERR_INCOMPLETE_CHUNKED_ENCODING")
+      ) errors.push(message.text());
     });
 
     await page.goto(`${WEB_URL}/login`, { waitUntil: "networkidle" });
@@ -260,6 +265,16 @@ async function main() {
     assert.equal(manifest.status, 200);
     assert.match(await manifest.text(), /OpenRoster/);
     console.log("PASS offline clock queue and PWA manifest");
+
+    pb.kill("SIGKILL");
+    await page.goto(`${WEB_URL}/login`, { waitUntil: "domcontentloaded" });
+    await page.getByText(/Cannot reach PocketBase/i).waitFor({ timeout: 15000 });
+    console.log("PASS unreachable PocketBase banner");
+    pb = spawn(PB, ["serve", `--http=127.0.0.1:${PB_PORT}`, "--dir=.test-ui-data"], {
+      cwd: PB_DIR,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    await waitFor(`${PB_URL}/api/health`, "PocketBase");
 
     assert.deepEqual([...new Set(errors)], []);
     console.log("ALL UI TESTS PASSED");

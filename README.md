@@ -126,6 +126,7 @@ The PocketBase dashboard is at http://localhost:8097/_/; keep it private.
 - **Backups:** `make backup`, then read [`docs/BACKUP.md`](docs/BACKUP.md). Restore is scripted and should be tested quarterly.
 - **Containers:** both images run as non-root; the web container has a healthcheck.
 - **Upgrades:** see [`docs/UPGRADE.md`](docs/UPGRADE.md).
+- **Configuration:** copy [`../.env.example`](.env.example) values into your shell or compose file; `make dev-web` already passes `NEXT_PUBLIC_PB_URL` from `PB_PORT`.
 - **Retention:** see [`docs/RETENTION.md`](docs/RETENTION.md); `make retention` dry-runs, `make retention-apply` deletes.
 - **Offline/PWA:** see [`docs/OFFLINE.md`](docs/OFFLINE.md).
 - **API:** custom routes are documented in [`docs/API.md`](docs/API.md).

@@ -42,6 +42,9 @@ jobs:
           NEXT_PUBLIC_PB_URL: http://127.0.0.1:18097
           NEXT_TELEMETRY_DISABLED: 1
 
+      - name: Embedded PocketBase URL check
+        run: node scripts/check-pb-url.mjs http://127.0.0.1:18097
+
       - name: Unit tests
         run: make test
 

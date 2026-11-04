@@ -40,10 +40,15 @@ dev-pb: pb
 	cd pb && ./pocketbase serve --http=127.0.0.1:$(PB_PORT) --dir=pb_data
 
 dev-web:
-	cd web && npm run dev
+	cd web && NEXT_PUBLIC_PB_URL=$(PB_URL) npm run dev
 
 build:
-	cd web && npm run build
+	cd web && NEXT_PUBLIC_PB_URL=$(PB_URL) npm run build
+
+envcheck:
+	@test -n "$$NEXT_PUBLIC_PB_URL" || (echo "Set NEXT_PUBLIC_PB_URL (or PB_PORT) before building." >&2; exit 1)
+	cd web && NEXT_PUBLIC_PB_URL=$(NEXT_PUBLIC_PB_URL) npm run build >/dev/null 2>&1
+	@node scripts/check-pb-url.mjs "$(NEXT_PUBLIC_PB_URL)"
 
 test:
 	node --test tests/*.test.cjs

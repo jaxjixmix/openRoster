@@ -6,6 +6,7 @@ import { ArrowRight, CalendarDays, Clock3, Eye, EyeOff, ShieldCheck, Wallet } fr
 import { useAuth } from "@/lib/auth";
 import { pb } from "@/lib/pb";
 import { Button, ErrorNote, Input, Label } from "@/components/ui";
+import { PbHealthNote } from "@/components/env-banner";
 
 interface SetupStatus {
   setup_required: boolean;
@@ -138,6 +139,8 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-muted">
             Use your work email. Your role decides what you can see.
           </p>
+
+          <PbHealthNote />
 
           <form onSubmit={onSubmit} className="mt-8 space-y-4">
             <div>
