@@ -16,7 +16,7 @@ OpenRoster borrows the *ideas* — Staffjoy's company/location/team/worker model
 
 ## Status
 
-OpenRoster is a **working public alpha**. Current release: **[v0.9.0-alpha](https://github.com/jaxjixmix/openRoster/releases/tag/v0.9.0-alpha)**. The repo is MIT and the delivery backlog is public:
+OpenRoster is a **working public alpha**. Current release: **[v0.10.0-alpha](https://github.com/jaxjixmix/openRoster/releases/tag/v0.10.0-alpha)**. The repo is MIT and the delivery backlog is public:
 
 - **Shipped:** data safety and transactions (#1), pay periods/clock/timezone (#2), self-service and scheduling depth (#3), operations/exports/polish (#4), public-repo bar (#5), environment config (#7), export-only payroll contract (#6).
 - **[#8 — demand forecasting](https://github.com/jaxjixmix/openRoster/issues/8)** — alpha covers/recommendation flow shipped; hour-level demand, CSV/POS import and draft-template conversion remain open.

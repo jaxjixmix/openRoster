@@ -4,6 +4,20 @@ All notable changes to OpenRoster are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-1.0 prerelease versions while the payroll boundary remains alpha.
 
+## [0.10.0-alpha] — 2026-11-04
+
+### Security
+- Geofenced locations require coordinates for online punches; offline punches are marked unverified.
+- Open-shift claim, swap-accept and first-run setup re-check state inside transactions.
+- Caddy example ships HSTS, nosniff, frame denial, referrer and permissions policies, and a framing/base/form CSP.
+- Backups are created with mode 600.
+- `main` is protected with required CI checks and review.
+
+### Changed
+- Public-release governance: Contributor Covenant, CHANGELOG, Dependabot, SECURITY supported versions, release checklist.
+- Production dependency audit gate added to CI; dev-only minimatch/ESLint findings documented.
+- Package metadata moved to 0.10.0 / MIT.
+
 ## [0.9.0-alpha] — 2026-11-04
 
 ### Added
