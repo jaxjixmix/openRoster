@@ -76,18 +76,31 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
     if (lastType !== "break_start") return h.bad(e, "No open break to end.", 409)
   }
 
-  const punchLocationId = body.location || employee.getString("location")
-  if (punchLocationId && typeof body.lat === "number" && typeof body.lng === "number") {
+  // A self-service punch must use the employee's own location. Managers may
+  // clock someone in at another site. A fenced site is enforced even when the
+  // browser shares no coordinates; offline replay is the one explicit exception.
+  const offline = !!(clientId && body.punched_at)
+  const chosenLocation = h.isManager(e.auth) && body.location ? body.location : employee.getString("location")
+  let geofenceUnverified = false
+  if (chosenLocation) {
     let location = null
-    try { location = e.app.findRecordById("locations", punchLocationId) } catch (err) {}
+    try { location = e.app.findRecordById("locations", chosenLocation) } catch (err) {}
     if (location) {
       const lat = location.getFloat("lat")
       const lng = location.getFloat("lng")
       const radius = location.getFloat("geofence_meters") || 0
       if (radius > 0 && (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001)) {
-        const distance = h.distanceMeters(body.lat, body.lng, lat, lng)
-        if (distance > radius) {
-          return h.bad(e, "You are " + distance + "m from " + location.getString("name") + ". Move within " + radius + "m to clock in.", 422)
+        const hasCoords = typeof body.lat === "number" && typeof body.lng === "number"
+        if (!hasCoords) {
+          if (!offline) {
+            return h.bad(e, "This site requires your location to clock in. Share location access and retry.", 422)
+          }
+          geofenceUnverified = true
+        } else {
+          const distance = h.distanceMeters(body.lat, body.lng, lat, lng)
+          if (distance > radius) {
+            return h.bad(e, "You are " + distance + "m from " + location.getString("name") + ". Move within " + radius + "m to clock in.", 422)
+          }
         }
       }
     }
@@ -95,13 +108,14 @@ routerAdd("POST", "/api/openroster/clock", (e) => {
 
   const punch = new Record(e.app.findCollectionByNameOrId("punches"))
   punch.set("employee", employee.id)
-  if (body.location) punch.set("location", body.location)
-  else if (employee.getString("location")) punch.set("location", employee.getString("location"))
+  if (chosenLocation) punch.set("location", chosenLocation)
   punch.set("type", type)
   punch.set("punched_at", punchedAt.toISOString())
   if (clientId) punch.set("client_id", clientId)
   punch.set("source", body.source || "web")
-  if (clientId && body.punched_at) punch.set("note", "Offline punch; timestamp supplied by the device.")
+  if (clientId && body.punched_at) {
+    punch.set("note", "Offline punch; timestamp supplied by the device." + (geofenceUnverified ? " Geofence not verified." : ""))
+  }
   if (body.lat) punch.set("lat", body.lat)
   if (body.lng) punch.set("lng", body.lng)
   punch.set("created_by", e.auth.id)
@@ -659,6 +673,13 @@ routerAdd("POST", "/api/openroster/swaps/accept", (e) => {
 
   e.app.runInTransaction((txApp) => {
     const record = txApp.findRecordById("shift_swaps", swap.id)
+    if (record.getString("status") !== "open" || record.getString("accepted_by")) {
+      throw new BadRequestError("This swap was just accepted by someone else.")
+    }
+    const freshShift = txApp.findRecordById("shifts", record.getString("shift"))
+    if (freshShift.getString("employee") !== record.getString("offered_by")) {
+      throw new BadRequestError("This shift changed; offer a new swap.")
+    }
     record.set("accepted_by", employee.id)
     record.set("status", "accepted")
     txApp.save(record)
@@ -743,6 +764,8 @@ routerAdd("POST", "/api/openroster/shifts/claim", (e) => {
 
   e.app.runInTransaction((txApp) => {
     const record = txApp.findRecordById("shifts", shift.id)
+    if (record.getString("employee")) throw new BadRequestError("That shift was just claimed by someone else.")
+    if (record.getString("status") !== "published") throw new BadRequestError("That shift is no longer published.")
     record.set("employee", employee.id)
     record.set("source", "swap")
     txApp.save(record)
@@ -1140,6 +1163,11 @@ routerAdd("POST", "/api/openroster/setup", (e) => {
 
   let ids = {}
   e.app.runInTransaction((txApp) => {
+    const againCompanies = txApp.findRecordsByFilter("companies", "1 = 1", "", 1, 0)
+    const againUsers = txApp.findRecordsByFilter("users", "1 = 1", "", 1, 0)
+    if (againCompanies.length || againUsers.length) {
+      throw new BadRequestError("This workspace was initialized by another request. Reload and sign in.")
+    }
     const company = new Record(txApp.findCollectionByNameOrId("companies"))
     company.set("name", companyName)
     company.set("legal_name", companyName)

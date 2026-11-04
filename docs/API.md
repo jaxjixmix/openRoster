@@ -40,6 +40,8 @@ curl -s http://127.0.0.1:8097/api/openroster/bootstrap \
 
 ## Offline punches
 
+A location with `geofence_meters > 0` requires browser coordinates for online punches; missing coordinates are rejected. Employees cannot switch to another location to dodge a fence. Queued offline punches are accepted without coordinates and marked `Geofence not verified.` in the note.
+
 Queued punches replay through `POST /api/openroster/clock` with `client_id` and `punched_at`. `client_id` makes the call idempotent; a duplicate returns `{duplicate:true}`. `punched_at` is accepted only with `client_id`, must be within 72 hours, and is flagged `source=offline` plus an audit note. Geofence checks require coordinates and cannot run while the device is offline.
 
 ## Money and time

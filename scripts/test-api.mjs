@@ -189,6 +189,12 @@ async function main() {
     });
     assert.equal(claimed.status, 200, "employee claims open shift");
     assert.equal(claimed.data.shift.employee, sam.id);
+    const reclaim = await request("/api/openroster/shifts/claim", {
+      method: "POST",
+      token: samLogin.data.token,
+      body: { shift: openShift.data.id },
+    });
+    assert.equal(reclaim.status, 409, "a claimed shift cannot be claimed twice");
     console.log("PASS open shift claim");
 
     const notifications = await request("/api/collections/notifications/records?perPage=20", { token: samLogin.data.token });
@@ -360,14 +366,16 @@ async function main() {
 
     const priya = (await request("/api/collections/employees/records?perPage=50", { token })).data.items.find((employee) => employee.first_name === "Priya");
     assert.ok(priya, "Priya exists");
-    const breakIn = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "in", offset_minutes: -480 } });
-    assert.equal(breakIn.status, 200, "clock in");
-    const breakStart = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "break_start", offset_minutes: -480 } });
+    const priyaLocation = (await request(`/api/collections/locations/records/${priya.location}`, { token })).data;
+    const priyaCoords = { lat: priyaLocation.lat, lng: priyaLocation.lng };
+    const breakIn = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "in", offset_minutes: -480, ...priyaCoords } });
+    assert.equal(breakIn.status, 200, "clock in: " + JSON.stringify(breakIn.data));
+    const breakStart = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "break_start", offset_minutes: -480, ...priyaCoords } });
     assert.equal(breakStart.status, 200, "break start");
     assert.equal(breakStart.data.on_break, true);
-    const breakEnd = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "break_end", offset_minutes: -480 } });
+    const breakEnd = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "break_end", offset_minutes: -480, ...priyaCoords } });
     assert.equal(breakEnd.status, 200, "break end");
-    const breakOut = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "out", offset_minutes: -480 } });
+    const breakOut = await request("/api/openroster/clock", { method: "POST", token, body: { employee: priya.id, type: "out", offset_minutes: -480, ...priyaCoords } });
     assert.equal(breakOut.status, 200, "clock out");
     console.log("PASS break punches");
 
@@ -426,6 +434,88 @@ async function main() {
     });
     assert.equal(offlineOut.status, 200, "offline clock out");
     console.log("PASS offline punch idempotency");
+
+    // A fenced site cannot be bypassed by denying browser coordinates.
+    const fencedLocation = priyaLocation;
+    assert.ok(fencedLocation.id, "Priya has a location");
+    const fenced = await request(`/api/collections/locations/records/${fencedLocation.id}`, {
+      method: "PATCH",
+      token,
+      body: { lat: 37.7749, lng: -122.4194, geofence_meters: 500 },
+    });
+    assert.equal(fenced.status, 200, "location geofence configured");
+    const noCoords = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: { employee: priya.id, type: "in", offset_minutes: -480 },
+    });
+    assert.equal(noCoords.status, 422, "fenced punch without coordinates is rejected");
+    const farCoords = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: { employee: priya.id, type: "in", offset_minutes: -480, lat: 0, lng: 0 },
+    });
+    assert.equal(farCoords.status, 422, "fenced punch outside the radius is rejected");
+    const insideCoords = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: {
+        employee: priya.id,
+        type: "in",
+        offset_minutes: -480,
+        lat: 37.7749,
+        lng: -122.4194,
+        client_id: `fenced-in-${Date.now()}`,
+        punched_at: new Date(Date.now() + 10000).toISOString(),
+      },
+    });
+    assert.equal(insideCoords.status, 200, "fenced punch inside the radius is accepted: " + JSON.stringify(insideCoords.data));
+    const fencedOut = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: {
+        employee: priya.id,
+        type: "out",
+        offset_minutes: -480,
+        lat: 37.7749,
+        lng: -122.4194,
+        client_id: `fenced-out-${Date.now()}`,
+        punched_at: new Date(Date.now() + 11000).toISOString(),
+      },
+    });
+    assert.equal(fencedOut.status, 200, "fenced clock out accepted: " + JSON.stringify(fencedOut.data));
+    const offlineFencedId = `fenced-offline-${Date.now()}`;
+    const offlineFenced = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: {
+        employee: priya.id,
+        type: "in",
+        offset_minutes: -480,
+        client_id: offlineFencedId,
+        punched_at: new Date(Date.now() + 20000).toISOString(),
+      },
+    });
+    assert.equal(offlineFenced.status, 200, "offline punch is accepted without coordinates");
+    assert.match(offlineFenced.data.punch.note, /Geofence not verified/);
+    const offlineFencedOut = await request("/api/openroster/clock", {
+      method: "POST",
+      token,
+      body: {
+        employee: priya.id,
+        type: "out",
+        offset_minutes: -480,
+        client_id: `${offlineFencedId}-out`,
+        punched_at: new Date(Date.now() + 21000).toISOString(),
+      },
+    });
+    assert.equal(offlineFencedOut.status, 200, "offline clock out accepted without coordinates");
+    await request(`/api/collections/locations/records/${fencedLocation.id}`, {
+      method: "PATCH",
+      token,
+      body: { lat: priyaCoords.lat, lng: priyaCoords.lng, geofence_meters: 150 },
+    });
+    console.log("PASS geofence enforcement");
 
     const weekStartStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
     const recommend = await request("/api/openroster/demand/recommend", {
