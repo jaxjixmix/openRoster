@@ -2,6 +2,16 @@
 
 OpenRoster is alpha software. Do not use it to process real payroll or store sensitive employee documents until you have reviewed the code and deployed it with TLS, backups, and restricted access.
 
+## Supported versions
+
+Only the latest prerelease is supported for security fixes. Older alpha tags are
+snapshots and may not receive backports.
+
+| Version | Supported |
+| --- | --- |
+| `0.9.x-alpha` | Yes |
+| `< 0.9.0-alpha` | No |
+
 ## Reporting a vulnerability
 
 Please do **not** open a public issue for a security problem.

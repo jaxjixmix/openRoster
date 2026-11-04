@@ -16,13 +16,13 @@ OpenRoster borrows the *ideas* — Staffjoy's company/location/team/worker model
 
 ## Status
 
-OpenRoster is a **working alpha**. Current release: **v0.4.0-alpha**. The delivery backlog is public:
+OpenRoster is a **working public alpha**. Current release: **[v0.9.0-alpha](https://github.com/jaxjixmix/openRoster/releases/tag/v0.9.0-alpha)**. The repo is MIT and the delivery backlog is public:
 
-- [#1 P0 — data safety and correctness](https://github.com/jaxjixmix/openRoster/issues/1) — safe archive, no cascade deletes, transactions, money-record locks, unit/API/setup tests.
-- [#2 P1 — payroll periods, clock, timezone](https://github.com/jaxjixmix/openRoster/issues/2) — complete: pay periods, PTO ledger, printable stubs, locale, pay-period clock, DST tests, breaks/rounding, geofence, punch corrections, kiosk PIN, currency/CSV.
-- [#3 P2 — employee self-service, notifications, scheduling depth](https://github.com/jaxjixmix/openRoster/issues/3) — complete for alpha: self-service, open-shift claiming, notifications/preferences, copy week, swaps, recurring templates, labor budget, time-off calendar/blackouts, certifications, expiry reminders. Demand forecast is explicitly deferred.
-- [#4 P3 — operations, exports, polish](https://github.com/jaxjixmix/openRoster/issues/4) — shipped: Caddy, backups, non-root containers, API docs, CSV, monitoring, type generation, accessibility and richer reports. PWA/offline clock shipped; i18n is tracked in #9.
-- [#5 Public repo bar](https://github.com/jaxjixmix/openRoster/issues/5) — this repo is public under an alpha disclaimer.
+- **Shipped:** data safety and transactions (#1), pay periods/clock/timezone (#2), self-service and scheduling depth (#3), operations/exports/polish (#4), public-repo bar (#5), environment config (#7), export-only payroll contract (#6).
+- **[#8 — demand forecasting](https://github.com/jaxjixmix/openRoster/issues/8)** — alpha covers/recommendation flow shipped; hour-level demand, CSV/POS import and draft-template conversion remain open.
+- **[#9 — i18n](https://github.com/jaxjixmix/openRoster/issues/9)** — English/Spanish foundation and shell/auth/clock/schedule coverage shipped; deeper page strings and more languages remain open.
+
+The current boundary is deliberate: payroll stays a configurable preview/export, not a tax engine or payment system.
 
 ## What v1 does
 
@@ -127,7 +127,7 @@ The PocketBase dashboard is at http://localhost:8097/_/; keep it private.
 - **Containers:** both images run as non-root; the web container has a healthcheck.
 - **Upgrades:** see [`docs/UPGRADE.md`](docs/UPGRADE.md).
 - **i18n:** the interface ships in English and Spanish; pick the interface language per company in Settings → UI language. Date/number/currency formats follow Locale; server-generated emails stay English-only in the alpha.
-- **Configuration:** copy [`../.env.example`](.env.example) values into your shell or compose file; `make dev-web` already passes `NEXT_PUBLIC_PB_URL` from `PB_PORT`.
+- **Configuration:** copy [`.env.example`](.env.example) values into your shell or compose file; `make dev-web` already passes `NEXT_PUBLIC_PB_URL` from `PB_PORT`.
 - **Retention:** see [`docs/RETENTION.md`](docs/RETENTION.md); `make retention` dry-runs, `make retention-apply` deletes.
 - **Offline/PWA:** see [`docs/OFFLINE.md`](docs/OFFLINE.md).
 - **API:** custom routes are documented in [`docs/API.md`](docs/API.md).
