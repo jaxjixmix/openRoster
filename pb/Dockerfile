@@ -1,4 +1,4 @@
-FROM alpine:3.20
+FROM alpine:3.24
 ARG PB_VERSION=0.40.6
 ARG TARGETARCH=amd64
 RUN apk add --no-cache ca-certificates unzip wget \
