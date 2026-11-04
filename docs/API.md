@@ -63,4 +63,4 @@ Queued punches replay through `POST /api/openroster/clock` with `client_id` and 
 
 ## Notifications
 
-`notifications` is a normal PocketBase collection. Each record belongs to one `user`; list/view/update rules only expose the owner's records. `users.notification_prefs` stores `{ in_app: boolean, email: boolean }`. In-app delivery is always written for eligible events; email is opt-in and uses PocketBase mail settings.
+`notifications` is a normal PocketBase collection. Each record belongs to one `user`; list/view/update rules only expose the owner's records. `users.notification_prefs` stores `{ in_app: boolean, email: boolean }`. In-app delivery is always written for eligible events; email is opt-in and uses PocketBase mail settings. Server-generated notifications and email are English-only in the alpha (`ui_language` currently affects the web interface, not server messages).

@@ -55,6 +55,7 @@ test:
 	cd web && node --test tests/tz.test.mjs
 	cd web && node --experimental-strip-types tests/format.test.mjs
 	cd web && node --experimental-strip-types tests/schedule-range.test.mjs
+	cd web && node --experimental-strip-types tests/i18n.test.mjs
 
 test-api:
 	node scripts/test-api.mjs

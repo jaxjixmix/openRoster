@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { pb } from "@/lib/pb";
 import { Button, ErrorNote, Input, Label } from "@/components/ui";
 import { PbHealthNote } from "@/components/env-banner";
+import { useI18n } from "@/lib/i18n-provider";
 
 interface SetupStatus {
   setup_required: boolean;
@@ -21,6 +22,7 @@ const DEMOS = [
 
 export default function LoginPage() {
   const { login, user, loading } = useAuth();
+  const { t } = useI18n();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -132,19 +134,19 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="eyebrow mb-3">Welcome back</p>
+          <p className="eyebrow mb-3">{t("auth.welcome")}</p>
           <h2 className="text-[30px] font-semibold leading-tight tracking-[-0.035em]">
-            Sign in to your roster
+            {t("auth.signinPrompt")}
           </h2>
           <p className="mt-2 text-sm text-muted">
-            Use your work email. Your role decides what you can see.
+            {t("auth.signinHint")}
           </p>
 
           <PbHealthNote />
 
           <form onSubmit={onSubmit} className="mt-8 space-y-4">
             <div>
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth.email")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -156,7 +158,7 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("auth.password")}</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -182,7 +184,7 @@ export default function LoginPage() {
             {error && <ErrorNote>{error}</ErrorNote>}
 
             <Button type="submit" className="w-full" size="lg" loading={busy}>
-              Sign in <ArrowRight className="size-4" />
+              {t("auth.signin")} <ArrowRight className="size-4" />
             </Button>
           </form>
 

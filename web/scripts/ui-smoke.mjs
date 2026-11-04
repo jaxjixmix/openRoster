@@ -136,15 +136,15 @@ async function main() {
     assert.match(await page.getByRole("menu").innerText(), /Copy shift/);
     assert.match(await page.getByRole("menu").innerText(), /Repeat next week/);
     assert.match(await page.getByRole("menu").innerText(), /Delete shift/);
-    await page.getByRole("menuitem", { name: "Copy shift" }).click();
+    await page.getByRole("menuitem", { name: /copy shift/i }).click();
     await page.waitForTimeout(300);
     assert.match(await page.locator(".fixed.bottom-5").innerText(), /Shift copied/);
 
     await page.getByTestId("schedule-view-month").click();
     await page.waitForTimeout(500);
-    const emptyDay = page.getByRole("button", { name: "+ Add shift" }).first();
+    const emptyDay = page.locator("[data-day-cell]").locator("button", { hasText: "+ Add shift" }).first();
     await emptyDay.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Paste shift here" }).click();
+    await page.getByRole("menuitem", { name: /Paste (shift )?here/i }).click();
     await page.waitForTimeout(900);
     assert.match(await page.locator(".fixed.bottom-5").innerText(), /Created 1 shift/);
     const pastedId = await page.evaluate(async (pbUrl) => {
@@ -157,7 +157,7 @@ async function main() {
     assert.ok(pastedId, "pasted shift exists");
     await page.locator(`[data-shift-id="${pastedId}"]`).first().click({ button: "right" });
     page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("menuitem", { name: "Delete shift" }).click();
+    await page.getByRole("menuitem", { name: /delete shift/i }).click();
     await page.waitForTimeout(700);
     assert.match(await page.locator(".fixed.bottom-5").innerText(), /Shift deleted/);
 
@@ -165,7 +165,7 @@ async function main() {
     await page.waitForTimeout(600);
     const openShift = page.locator("[data-shift-id]").filter({ hasText: "Open" }).first();
     await openShift.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Repeat next week" }).click();
+    await page.getByRole("menuitem", { name: /repeat next week/i }).click();
     await page.waitForTimeout(900);
     assert.match(await page.locator(".fixed.bottom-5").innerText(), /Created 1 repeated shift/);
     console.log("PASS schedule views and shift context menu");

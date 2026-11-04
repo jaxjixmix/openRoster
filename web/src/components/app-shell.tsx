@@ -27,22 +27,23 @@ import { roleLabel } from "@/lib/format";
 import { Avatar, Badge } from "@/components/ui";
 import { CurrencyProvider } from "@/lib/currency";
 import { NotificationBell } from "@/components/notification-bell";
+import { useI18n } from "@/lib/i18n-provider";
 
-const NAV = [
-  { href: "/", label: "Today", icon: LayoutDashboard, manager: false },
-  { href: "/schedule", label: "Schedule", icon: CalendarDays, manager: false },
-  { href: "/timeclock", label: "Time Clock", icon: Clock3, manager: false },
-  { href: "/timesheets", label: "Timesheets", icon: ClipboardCheck, manager: false },
-  { href: "/requests", label: "Time Off", icon: Inbox, manager: false },
-  { href: "/calendar", label: "Time-off calendar", icon: CalendarClock, manager: false },
-  { href: "/swaps", label: "Swaps", icon: Repeat, manager: false },
-  { href: "/me", label: "My profile", icon: CircleUserRound, manager: false },
-  { href: "/people", label: "People", icon: Users, manager: true },
-  { href: "/templates", label: "Shift templates", icon: CalendarClock, manager: true },
-  { href: "/forecast", label: "Demand forecast", icon: CalendarClock, manager: true },
-  { href: "/payroll", label: "Payroll", icon: Wallet, manager: true },
-  { href: "/reports", label: "Reports", icon: BarChart3, manager: true },
-  { href: "/settings", label: "Settings", icon: Settings, manager: true },
+const NAV: Array<{ href: string; key: string; label: string; icon: typeof LayoutDashboard; manager: boolean }> = [
+  { href: "/", key: "nav.today", label: "Today", icon: LayoutDashboard, manager: false },
+  { href: "/schedule", key: "nav.schedule", label: "Schedule", icon: CalendarDays, manager: false },
+  { href: "/timeclock", key: "nav.timeclock", label: "Time Clock", icon: Clock3, manager: false },
+  { href: "/timesheets", key: "nav.timesheets", label: "Timesheets", icon: ClipboardCheck, manager: false },
+  { href: "/requests", key: "nav.timeoff", label: "Time Off", icon: Inbox, manager: false },
+  { href: "/calendar", key: "nav.calendar", label: "Time-off calendar", icon: CalendarClock, manager: false },
+  { href: "/swaps", key: "nav.swaps", label: "Swaps", icon: Repeat, manager: false },
+  { href: "/me", key: "nav.myprofile", label: "My profile", icon: CircleUserRound, manager: false },
+  { href: "/people", key: "nav.people", label: "People", icon: Users, manager: true },
+  { href: "/templates", key: "nav.templates", label: "Shift templates", icon: CalendarClock, manager: true },
+  { href: "/forecast", key: "nav.forecast", label: "Demand forecast", icon: CalendarClock, manager: true },
+  { href: "/payroll", key: "nav.payroll", label: "Payroll", icon: Wallet, manager: true },
+  { href: "/reports", key: "nav.reports", label: "Reports", icon: BarChart3, manager: true },
+  { href: "/settings", key: "nav.settings", label: "Settings", icon: Settings, manager: true },
 ];
 
 function Logo() {
@@ -58,6 +59,7 @@ function Logo() {
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { user, company, isManager, logout } = useAuth();
+  const { t } = useI18n();
   const pathname = usePathname();
 
   return (
@@ -77,7 +79,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="mx-5 mb-5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-        <p className="text-[10px] uppercase tracking-[0.14em] text-[#8e8878]">Workspace</p>
+        <p className="text-[10px] uppercase tracking-[0.14em] text-[#8e8878]">{t("nav.workspace")}</p>
         <p className="mt-0.5 truncate text-xs text-[#cfc9b9]">
           {company?.timezone?.replace("_", " ") || "Local time"}
         </p>
@@ -115,7 +117,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   <span className="absolute -left-3 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-accent" />
                 )}
                 <Icon className={cn("size-4", active ? "text-accent" : "text-[#8e8878] group-hover:text-[#cfc9b9]")} />
-                {item.label}
+                {t(item.key)}
               </Link>
             </div>
           );

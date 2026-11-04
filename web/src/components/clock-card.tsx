@@ -10,6 +10,7 @@ import type { Punch } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { Button, ErrorNote } from "@/components/ui";
 import { useToast } from "@/lib/toast";
+import { useI18n } from "@/lib/i18n-provider";
 
 function elapsedLabel(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -30,6 +31,7 @@ export function ClockCard({
 }) {
   const { employee, company, isManager } = useAuth();
   const toast = useToast();
+  const { t } = useI18n();
   const tz = company?.timezone || "America/Los_Angeles";
   const locale = company?.locale || "en-US";
   const targetId = employeeId || employee?.id;
@@ -119,12 +121,12 @@ export function ClockCard({
     }
     setQueuedCount(getQueuedPunches(targetId).length);
     if (synced) {
-      toast(`${synced} offline punch${synced === 1 ? "" : "es"} synced.`);
+      toast(t("clock.syncedToast", { count: synced }));
       await load();
       onChanged?.();
     }
     if (rejected) setError(`${rejected} offline punch${rejected === 1 ? "" : "es"} could not be applied because the clock state changed.`);
-  }, [targetId, employeeId, load, onChanged, toast]);
+  }, [targetId, employeeId, load, onChanged, toast, t]);
 
   useEffect(() => {
     void load();
@@ -230,7 +232,7 @@ export function ClockCard({
         setOnline(false);
         await load();
         onChanged?.();
-        toast("Saved offline. It will sync when you reconnect.");
+        toast(t("clock.offlineSaved"));
         return;
       }
       const coords = await position()
@@ -282,15 +284,15 @@ export function ClockCard({
           <div>
             <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-[#a7a18f]">
               <Clock3 className="size-3.5" />
-              {onBreak ? "On break" : clockedIn ? "On the clock" : "Time clock"}
+              {onBreak ? t("clock.onBreak") : clockedIn ? t("clock.onClock") : t("clock.off")}
             </div>
             <div className="mt-3 font-mono text-[34px] font-medium leading-none tracking-[-0.04em] tabular sm:text-[42px]">
               {clockedIn ? elapsedLabel(workedMs) : todayLabel}
             </div>
             <p className="mt-2 text-xs text-[#a7a18f]">
               {clockedIn
-                ? `${onBreak ? "On break since " + formatTime(new Date(punches[punches.length - 1].punched_at).toISOString(), tz) : "Clocked in at " + (currentInAt ? formatTime(new Date(currentInAt).toISOString(), tz) : "—")} · ${(workedMs / 3600000).toFixed(2)}h today`
-                : "You are clocked out. Your hours land in this week's timesheet."}
+                ? `${onBreak ? t("clock.onBreakSince", { time: formatTime(new Date(punches[punches.length - 1].punched_at).toISOString(), tz) }) : t("clock.clockedInAt", { time: currentInAt ? formatTime(new Date(currentInAt).toISOString(), tz) : "—" })} · ${(workedMs / 3600000).toFixed(2)}h today`
+                : t("clock.clockedOut")}
             </p>
           </div>
           <span
@@ -301,7 +303,7 @@ export function ClockCard({
             }`}
           >
             <span className={`size-1.5 rounded-full ${clockedIn ? "animate-pulse bg-[#7fc79a]" : "bg-[#6d685b]"}`} />
-            {onBreak ? "On break" : clockedIn ? "Working" : "Off"}
+            {onBreak ? t("clock.onBreak") : clockedIn ? t("clock.working") : t("clock.off")}
           </span>
         </div>
       </div>
@@ -312,29 +314,29 @@ export function ClockCard({
             <WifiOff className="mt-0.5 size-3.5 shrink-0" />
             <span>
               {online
-                ? `${queuedCount} punch${queuedCount === 1 ? "" : "es"} waiting to sync.`
-                : "Offline. Punches are saved on this device and sync when you reconnect."}
+                ? t("clock.syncNote", { count: queuedCount })
+                : t("clock.offlineNote")}
             </span>
           </div>
         )}
         <div className="flex items-center gap-2">
           {!clockedIn && (
             <Button variant="accent" className="flex-1" size="lg" loading={busy} onClick={() => punch("in")}>
-              <LogIn className="size-4" /> Clock in
+              <LogIn className="size-4" /> {t("clock.in")}
             </Button>
           )}
           {clockedIn && onBreak && (
             <Button variant="accent" className="flex-1" size="lg" loading={busy} onClick={() => punch("break_end")}>
-              <Coffee className="size-4" /> End break
+              <Coffee className="size-4" /> {t("clock.breakEnd")}
             </Button>
           )}
           {clockedIn && !onBreak && (
             <>
               <Button variant="outline" className="flex-1" size="lg" loading={busy} onClick={() => punch("break_start")}>
-                <Coffee className="size-4" /> Break
+                <Coffee className="size-4" /> {t("clock.break")}
               </Button>
               <Button variant="outline" className="flex-1" size="lg" loading={busy} onClick={() => punch("out")}>
-                <LogOut className="size-4" /> Clock out
+                <LogOut className="size-4" /> {t("clock.out")}
               </Button>
             </>
           )}
@@ -347,14 +349,14 @@ export function ClockCard({
 
         {punches.length > 0 && (
           <div className={`${compact ? "mt-4" : "mt-4 border-t border-line pt-4"} space-y-2`}>
-            <p className="eyebrow">Today&apos;s punches</p>
+            <p className="eyebrow">{t("clock.todaysPunches")}</p>
             <div className="space-y-1.5">
               {punches.slice(-6).map((p) => (
                 <div key={p.id} className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-muted">
                     {p.type === "in" ? <LogIn className="size-3 text-sage" /> : p.type === "break_start" ? <Coffee className="size-3 text-gold" /> : p.type === "break_end" ? <Coffee className="size-3 text-sage" /> : <LogOut className="size-3 text-accent" />}
-                    {p.type === "in" ? "In" : p.type === "out" ? "Out" : p.type === "break_start" ? "Break" : "Break end"}
-                    {p.queued && <span className="rounded bg-gold/20 px-1 text-[9px] uppercase tracking-wide text-ink">queued</span>}
+                    {p.type === "in" ? t("clock.in") : p.type === "out" ? t("clock.out") : p.type === "break_start" ? t("clock.break") : t("clock.breakEnd")}
+                    {p.queued && <span className="rounded bg-gold/20 px-1 text-[9px] uppercase tracking-wide text-ink">{t("clock.queued")}</span>}
                     {p.expand?.location && (
                       <span className="hidden items-center gap-0.5 text-[10px] text-muted/70 sm:flex">
                         <MapPin className="size-2.5" />
@@ -369,7 +371,7 @@ export function ClockCard({
           </div>
         )}
         {!loading && punches.length === 0 && !isManager && (
-          <p className="mt-3 text-[11px] text-muted">No punches yet today.</p>
+          <p className="mt-3 text-[11px] text-muted">{t("clock.noPunches")}</p>
         )}
         <p className="mt-3 text-[10px] leading-relaxed text-muted/70">
           Location is checked when your browser shares it. The punch is saved in UTC.

@@ -73,6 +73,7 @@ export default function SettingsPage() {
     timezone: "America/Los_Angeles",
     currency: "USD",
     locale: "en-US",
+    ui_language: "auto",
     week_start: "1",
     pay_frequency: "biweekly",
     overtime_weekly_hours: "40",
@@ -145,6 +146,7 @@ export default function SettingsPage() {
       timezone: company.timezone || "America/Los_Angeles",
       currency: company.currency || "USD",
       locale: company.locale || "en-US",
+      ui_language: company.ui_language || "auto",
       week_start: company.week_start || "1",
       pay_frequency: company.pay_frequency || "biweekly",
       overtime_weekly_hours: String(company.overtime_weekly_hours ?? 40),
@@ -291,6 +293,14 @@ export default function SettingsPage() {
                     <Select value={companyForm.week_start} onChange={(e) => setCompanyForm({ ...companyForm, week_start: e.target.value })}>
                       <option value="1">Monday</option>
                       <option value="0">Sunday</option>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>UI language</Label>
+                    <Select value={companyForm.ui_language || "auto"} onChange={(e) => setCompanyForm({ ...companyForm, ui_language: e.target.value })}>
+                      <option value="auto">Follow locale</option>
+                      <option value="en">English</option>
+                      <option value="es">Español</option>
                     </Select>
                   </div>
                 </div>

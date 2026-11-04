@@ -60,6 +60,7 @@ import { useMoney } from "@/lib/currency";
 import { useToast } from "@/lib/toast";
 import { downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n-provider";
 
 const START_MIN = 6 * 60;
 const END_MIN = 24 * 60;
@@ -103,6 +104,7 @@ function layoutDay(shifts: Shift[], tz: string): Positioned[] {
 export default function SchedulePage() {
   const { company, employee, isManager } = useAuth();
   const toast = useToast();
+  const { t } = useI18n();
   const money = useMoney();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);
@@ -427,7 +429,7 @@ export default function SchedulePage() {
   function copyShift(shift: Shift) {
     setClipboard({ ...shift });
     setMenu(null);
-    toast("Shift copied. Right-click a day or another shift to paste.");
+    toast(t("schedule.copiedToast"));
   }
 
   async function pasteShift() {
@@ -575,7 +577,7 @@ export default function SchedulePage() {
               onClick={() => openDay(day)}
               className="w-full rounded-lg border border-dashed border-line py-1.5 text-[9px] font-medium text-muted transition hover:border-line-strong hover:text-ink"
             >
-              +{hidden} more · view day
+              +{hidden} more · {t("schedule.viewDay")}
             </button>
           )}
           {dayShifts.length === 0 && (
@@ -584,7 +586,7 @@ export default function SchedulePage() {
               onContextMenu={(event) => openMenu(event, undefined, day)}
               className="w-full rounded-lg border border-dashed border-line py-6 text-[10px] text-muted/60 transition hover:border-line-strong hover:text-muted"
             >
-              {isManager ? "+ Add shift" : "No shifts"}
+              {isManager ? t("schedule.addShift") : "No shifts"}
             </button>
           )}
         </div>
@@ -619,7 +621,7 @@ export default function SchedulePage() {
           isManager ? (
             <>
               <Button variant="outline" size="sm" onClick={publishAll} disabled={!draftCount || busy}>
-                <UploadCloud className="size-3.5" /> Publish{draftCount ? ` ${draftCount}` : ""}
+                <UploadCloud className="size-3.5" /> {t("schedule.publish")}{draftCount ? ` ${draftCount}` : ""}
               </Button>
               {(rangeView === "day" || rangeView === "week") && (
                 <>
@@ -628,14 +630,14 @@ export default function SchedulePage() {
                     Auto-fill
                   </Button>
                   <Button variant="outline" size="sm" onClick={applyTemplates} loading={busy}>
-                    <CalendarClock className="size-3.5" /> Apply templates
+                    <CalendarClock className="size-3.5" /> {t("schedule.applyTemplates")}
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => { setCopyTarget(addDaysStr(actionWeek, 7)); setCopyOpen(true); }}
                   >
-                    <Copy className="size-3.5" /> Copy week
+                    <Copy className="size-3.5" /> {t("schedule.copyWeek")}
                   </Button>
                 </>
               )}
@@ -654,10 +656,10 @@ export default function SchedulePage() {
                 })))}
                 disabled={!visibleShifts.length}
               >
-                <Download className="size-3.5" /> Export
+                <Download className="size-3.5" /> {t("schedule.export")}
               </Button>
               <Button size="sm" onClick={() => openNew(today)}>
-                <Plus className="size-3.5" /> Add shift
+                <Plus className="size-3.5" /> {t("schedule.addShift")}
               </Button>
             </>
           ) : undefined
@@ -943,7 +945,7 @@ export default function SchedulePage() {
                   </button>
                   {isManager && (
                     <button
-                      aria-label="Shift actions"
+                      aria-label={t("schedule.dayActions")}
                       onClick={(event) => openMenu(event, shift)}
                       className="mt-1 rounded-md p-2 text-muted transition hover:bg-[#eeeae0] hover:text-ink"
                     >
@@ -957,7 +959,7 @@ export default function SchedulePage() {
                   onClick={() => openDay(day)}
                   className="w-full rounded-lg border border-dashed border-line py-2 text-[11px] font-medium text-muted transition hover:border-line-strong hover:text-ink"
                 >
-                  +{dayShifts.length - mobileLimit} more · view day
+                  +{dayShifts.length - mobileLimit} more · {t("schedule.viewDay")}
                 </button>
               )}
             </div>
@@ -978,7 +980,7 @@ export default function SchedulePage() {
       {menu && (
         <div
           role="menu"
-          aria-label="Shift actions"
+          aria-label={t("schedule.shiftActions")}
           className="fixed z-50 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl"
           style={{ left: menu.x, top: menu.y }}
           onClick={(event) => event.stopPropagation()}
@@ -986,27 +988,27 @@ export default function SchedulePage() {
           {menu.shift ? (
             <>
               <MenuItem icon={<Copy className="size-3.5" />} onClick={() => copyShift(menu.shift!)}>
-                Copy shift
+                {t("schedule.copyShift")}
               </MenuItem>
               <MenuItem icon={<ClipboardPaste className="size-3.5" />} onClick={() => void pasteShift()} disabled={!clipboard}>
-                Paste here
+                {t("schedule.pasteHere")}
               </MenuItem>
               <div className="my-1 border-t border-line" />
               <MenuItem icon={<Repeat className="size-3.5" />} onClick={() => void repeatShift(1)}>
-                Repeat next week
+                {t("schedule.repeatNext")}
               </MenuItem>
               <MenuItem icon={<Repeat className="size-3.5" />} onClick={() => void repeatShift(4)}>
-                Repeat next 4 weeks
+                {t("schedule.repeatNext4")}
               </MenuItem>
               <div className="my-1 border-t border-line" />
               <MenuItem icon={<Trash2 className="size-3.5" />} onClick={() => void deleteShift(menu.shift!)} danger>
-                Delete shift
+                {t("schedule.delete")}
               </MenuItem>
             </>
           ) : (
             <>
               <MenuItem icon={<ClipboardPaste className="size-3.5" />} onClick={() => void pasteShift()} disabled={!clipboard}>
-                Paste shift here
+                {t("schedule.pasteHere")}
               </MenuItem>
               <MenuItem icon={<Plus className="size-3.5" />} onClick={() => { const day = menu.day; setMenu(null); openNew(day); }}>
                 Add shift

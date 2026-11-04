@@ -23,6 +23,7 @@ export interface Company extends BaseRecord {
   timezone: string;
   currency: string;
   locale?: string;
+  ui_language?: "auto" | "en" | "es";
   week_start: string;
   pay_frequency: "weekly" | "biweekly" | "semimonthly" | "monthly";
   overtime_weekly_hours: number;
