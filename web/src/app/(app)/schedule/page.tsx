@@ -136,6 +136,7 @@ export default function SchedulePage() {
   const [menu, setMenu] = useState<{ x: number; y: number; shift: Shift | null; day: string } | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [undoCountdown, setUndoCountdown] = useState(0);
+  const [menuUsed, setMenuUsed] = useState(true);
 
   const load = useCallback(async () => {
     if (!company) return;
@@ -181,6 +182,10 @@ export default function SchedulePage() {
       unsub.then((fn) => { if (typeof fn === "function") fn(); }).catch(() => {});
     };
   }, [load]);
+
+  useEffect(() => {
+    setMenuUsed(window.localStorage.getItem("openroster.shiftMenuUsed") === "1");
+  }, []);
 
   useEffect(() => {
     if (!company) return;
@@ -365,6 +370,10 @@ export default function SchedulePage() {
 
   function openMenuAt(x: number, y: number, shift?: Shift, day?: string) {
     if (!isManager) return;
+    if (typeof window !== "undefined" && !menuUsed && shift) {
+      window.localStorage.setItem("openroster.shiftMenuUsed", "1");
+      setMenuUsed(true);
+    }
     const targetDay = day || (shift ? dateInTz(shift.starts_at, tz) : today);
     const width = 224;
     const height = 300;
@@ -532,18 +541,22 @@ export default function SchedulePage() {
     const endLabel = formatInTimeZone(toDate(shift.ends_at), tz, "h a").replace(" ", "").toLowerCase();
     const hrs = durationHours(shift.starts_at, shift.ends_at) - (shift.break_minutes || 0) / 60;
     return (
-      <button
+      <div
         key={shift.id}
         data-shift-id={shift.id}
+        onContextMenu={(event) => openMenu(event, shift)}
+        className={cn(
+          "group relative w-full rounded-lg border border-line bg-raised p-2 pr-8 text-left transition hover:border-line-strong hover:shadow-sm",
+          open && "border-dashed bg-[#fdf7f2]",
+        )}
+        style={{ borderLeft: `3px solid ${open ? "#d8d2c2" : color}` }}
+      >
+      <button
         onClick={() => { setSelected(shift); setModalOpen(true); }}
         onContextMenu={(event) => openMenu(event, shift)}
         onKeyDown={(event) => openMenuFromKeyboard(event, shift)}
         aria-haspopup="menu"
-        className={cn(
-          "w-full rounded-lg border border-line bg-raised p-2 text-left transition hover:border-line-strong hover:shadow-sm",
-          open && "border-dashed bg-[#fdf7f2]",
-        )}
-        style={{ borderLeft: `3px solid ${open ? "#d8d2c2" : color}` }}
+        className="block w-full text-left"
       >
         <div className="flex items-center justify-between gap-1">
           <span className="font-mono text-[11px] leading-none tabular text-ink">{startLabel}–{endLabel}</span>
@@ -568,6 +581,18 @@ export default function SchedulePage() {
           {shift.status === "draft" && <span className="ml-auto text-[10px] font-medium uppercase text-[#82621c]">Draft</span>}
         </div>
       </button>
+        {isManager && (
+          <button
+            aria-label={t("schedule.dayActions")}
+            onClick={(event) => openMenu(event, shift)}
+            onContextMenu={(event) => openMenu(event, shift)}
+            aria-haspopup="menu"
+            className="absolute right-1 top-1 rounded-md p-2 text-muted opacity-0 transition group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 hover:bg-[#eeeae0] hover:text-ink"
+          >
+            <MoreHorizontal className="size-4" />
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -584,8 +609,12 @@ export default function SchedulePage() {
         key={day}
         data-day-cell={day}
         onContextMenu={(event) => openMenu(event, undefined, day)}
+        onClick={(event) => {
+          const target = event.target as HTMLElement;
+          if (event.detail === 2 && isManager && target.tagName !== "BUTTON") openNew(day);
+        }}
         className={cn(
-          "flex flex-col rounded-xl border border-line bg-surface",
+          "group flex flex-col rounded-xl border border-line bg-surface",
           rangeView === "day" ? "min-h-[360px]" : rangeView === "week" ? "min-h-[480px]" : "min-h-[150px]",
           day === today && "border-[#d9c8b4] bg-[#fbf6ec]",
           outsideMonth && "opacity-55",
@@ -622,6 +651,16 @@ export default function SchedulePage() {
               className="w-full rounded-lg border border-dashed border-line py-6 text-[11px] text-muted/70 transition hover:border-line-strong hover:text-muted"
             >
               {isManager ? t("schedule.addShift") : "No shifts"}
+            </button>
+          )}
+          {isManager && dayShifts.length > 0 && hidden === 0 && (
+            <button
+              onClick={() => openNew(day)}
+              onContextMenu={(event) => openMenu(event, undefined, day)}
+              aria-label={t("schedule.addShift")}
+              className="w-full rounded-lg border border-dashed border-transparent py-1.5 text-[11px] font-medium text-muted opacity-0 transition hover:border-dashed hover:border-line hover:bg-[#faf8f2] hover:text-ink focus-visible:opacity-100 focus-visible:border-line"
+            >
+              + {t("schedule.addShift")}
             </button>
           )}
         </div>
@@ -766,7 +805,11 @@ export default function SchedulePage() {
               </button>
             </div>
           )}
-          {isManager && <span className="hidden text-[10px] text-muted xl:inline">Right-click a shift for actions</span>}
+          {isManager && !menuUsed && (
+            <span className="rounded-md bg-[#f7f4ec] px-2 py-1 text-[11px] text-muted">
+              {t("schedule.actionsHint")}
+            </span>
+          )}
           {openCount > 0 && <Badge tone="accent">{openCount} open</Badge>}
           {draftCount > 0 && <Badge tone="warning">{draftCount} draft</Badge>}
           {isManager && locations.length > 0 && (
@@ -893,18 +936,11 @@ export default function SchedulePage() {
                   const width = 100 / lanes;
                   const open = !shift.employee;
                   return (
-                    <button
+                    <div
                       key={shift.id}
                       data-shift-id={shift.id}
-                      onClick={() => {
-                        setSelected(shift);
-                        setModalOpen(true);
-                      }}
-                      onContextMenu={(event) => openMenu(event, shift)}
-                      onKeyDown={(event) => openMenuFromKeyboard(event, shift)}
-                      aria-haspopup="menu"
                       className={cn(
-                        "group absolute flex flex-col items-start justify-start gap-y-0.5 overflow-hidden rounded-md border-l-[3px] px-1.5 py-1 text-left transition hover:z-20 hover:shadow-lg",
+                        "group absolute flex flex-col items-start justify-start gap-y-0.5 overflow-hidden rounded-md border-l-[3px] px-0 py-0 text-left transition hover:z-20 hover:shadow-lg",
                         open && "border border-dashed border-l-[3px]",
                       )}
                       style={{
@@ -917,6 +953,16 @@ export default function SchedulePage() {
                         ...(open ? { borderColor: "#e2dccd" } : {}),
                       }}
                       title={`${formatTime(shift.starts_at, tz)} – ${formatTime(shift.ends_at, tz)} · ${shift.expand?.employee ? fullName(shift.expand.employee) : "Open"} · Right-click for actions`}
+                    >
+                      <button
+                      onClick={() => {
+                        setSelected(shift);
+                        setModalOpen(true);
+                      }}
+                      onContextMenu={(event) => openMenu(event, shift)}
+                      onKeyDown={(event) => openMenuFromKeyboard(event, shift)}
+                      aria-haspopup="menu"
+                      className="flex w-full flex-col items-start px-1.5 py-1 text-left"
                     >
                       <p className="truncate font-mono text-[10px] leading-tight tabular text-ink">
                         {formatTime(shift.starts_at, tz)}–{formatTime(shift.ends_at, tz)}
@@ -935,6 +981,16 @@ export default function SchedulePage() {
                         </span>
                       )}
                     </button>
+                    <button
+                      aria-label={t("schedule.dayActions")}
+                      onClick={(event) => openMenu(event, shift)}
+                      onContextMenu={(event) => openMenu(event, shift)}
+                      aria-haspopup="menu"
+                      className="absolute right-0.5 top-0.5 rounded-md p-1 text-ink opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 hover:bg-white/80"
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </button>
+                  </div>
                   );
                 })}
                 {dayShifts.length === 0 && (
@@ -982,7 +1038,7 @@ export default function SchedulePage() {
                     <button
                       aria-label={t("schedule.dayActions")}
                       onClick={(event) => openMenu(event, shift)}
-                      className="mt-1 rounded-md p-2 text-muted transition hover:bg-[#eeeae0] hover:text-ink"
+                      className="mt-0 min-h-[44px] min-w-[44px] rounded-md px-2.5 text-muted transition hover:bg-[#eeeae0] hover:text-ink"
                     >
                       <MoreHorizontal className="size-4" />
                     </button>

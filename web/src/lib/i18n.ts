@@ -82,6 +82,7 @@ const EN: Record<string, string> = {
   "schedule.cancel": "Cancel",
   "schedule.openShift": "Open",
   "schedule.andMore": "…and {count} more",
+  "schedule.actionsHint": "Right-click a shift (or press Shift+F10) for actions",
 };
 
 
@@ -166,6 +167,7 @@ const ES: Record<string, string> = {
   "schedule.cancel": "Cancelar",
   "schedule.openShift": "Abierto",
   "schedule.andMore": "…y {count} más",
+  "schedule.actionsHint": "Clic derecho en un turno (o Shift+F10) para acciones",
 };
 
 const CATALOGS: Record<Language, Record<string, string>> = { en: EN, es: ES };
