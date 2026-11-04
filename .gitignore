@@ -47,3 +47,4 @@ pb/.test-ui-data/
 pb/.test-setup-ui-data/
 web/test-results/
 web/playwright-report/
+AGENTS.md
