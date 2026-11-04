@@ -108,6 +108,12 @@ async function main() {
     assert.match(await page.locator("main").innerText(), /Scheduled labor budget/);
     console.log("PASS schedule and labor budget");
 
+    await page.getByRole("button", { name: /Auto-fill/ }).click();
+    await page.getByRole("dialog").waitFor();
+    assert.match(await page.getByRole("dialog").innerText(), /Auto-fill open shifts/);
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+    console.log("PASS auto-fill confirm");
+
     await page.getByTestId("schedule-view-day").click();
     await page.waitForTimeout(500);
     assert.match(await page.getByTestId("range-label").innerText(), /day,/);

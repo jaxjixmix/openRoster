@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { translate, interpolate, en, es } from "../src/lib/i18n.ts";
 
-test("every English key has an es translation (full catalog parity)", () => {
-  const missing = Object.keys(en).filter((key) => !(key in es));
-  assert.deepEqual(missing, [], `add these keys to the es catalog: ${missing.join(", ")}`);
+test("catalogs have full parity in both directions", () => {
+  const missingEs = Object.keys(en).filter((key) => !(key in es));
+  const missingEn = Object.keys(es).filter((key) => !(key in en));
+  assert.deepEqual(missingEs, [], `add these keys to the es catalog: ${missingEs.join(", ")}`);
+  assert.deepEqual(missingEn, [], `add these keys to the en catalog: ${missingEn.join(", ")}`);
 });
 
 test("missing key falls back to English and then to the key itself", () => {

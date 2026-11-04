@@ -160,6 +160,7 @@ export default function SchedulePage() {
   const [clipboard, setClipboard] = useState<Shift | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; shift: Shift | null; day: string } | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [autoFillOpen, setAutoFillOpen] = useState(false);
   const [undoCountdown, setUndoCountdown] = useState(0);
   const urlTouched = useRef(false);
   const dragSourceRef = useRef<string | null>(null);
@@ -260,6 +261,7 @@ export default function SchedulePage() {
   }, [days]);
 
   async function autoFill() {
+    setAutoFillOpen(false);
     setBusy(true);
     try {
       const result = await pb.send<{ assigned: number; unfilled: unknown[]; checked: number }>(
@@ -615,6 +617,8 @@ export default function SchedulePage() {
     [visibleShifts],
   );
   const publishDraftsCount = publishPreview.length;
+  const autoFillPreview = visibleShifts.filter((shift) => !shift.employee);
+  const autoFillCount = autoFillPreview.length;
   const timeLabel = (shift: Shift) =>
     `${formatInTimeZone(toDate(shift.starts_at), tz, "h a")}–${formatInTimeZone(toDate(shift.ends_at), tz, "h a")}`;
 
@@ -814,7 +818,7 @@ export default function SchedulePage() {
               </Button>
               {(rangeView === "day" || rangeView === "week") && (
                 <>
-                  <Button variant="outline" size="sm" onClick={autoFill} loading={busy}>
+                  <Button variant="outline" size="sm" onClick={() => setAutoFillOpen(true)} loading={busy}>
                     {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
                     Auto-fill
                   </Button>
@@ -1232,6 +1236,32 @@ export default function SchedulePage() {
           )}
         </div>
       )}
+
+      <Modal
+        open={autoFillOpen}
+        onClose={() => setAutoFillOpen(false)}
+        title={t("schedule.autofillConfirmTitle")}
+        description={t("schedule.autofillConfirmDesc")}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setAutoFillOpen(false)}>{t("schedule.cancel")}</Button>
+            <Button onClick={() => void autoFill()} loading={busy}>
+              {t("schedule.autofillNow", { count: autoFillCount })}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          {autoFillPreview.slice(0, 5).map((shift) => (
+            <div key={shift.id} className="flex items-center justify-between rounded-lg bg-[#f7f4ec] px-3 py-2 text-xs">
+              <span>{monthDay(dateInTz(shift.starts_at, tz))} · {timeLabel(shift)}</span>
+              <span className="text-muted">{shift.expand?.position?.name || shift.expand?.department?.name || t("schedule.openShift")}</span>
+            </div>
+          ))}
+          {autoFillCount > 5 && <p className="text-[11px] text-muted">{t("schedule.andMore", { count: autoFillCount - 5 })}</p>}
+          <p className="pt-1 text-[11px] leading-relaxed text-muted">{t("schedule.autofillHint")}</p>
+        </div>
+      </Modal>
 
       <Modal
         open={publishOpen}
