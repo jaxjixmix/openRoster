@@ -72,6 +72,16 @@ const EN: Record<string, string> = {
   "dashboard.openShifts": "Open shifts",
   "dashboard.onToday": "On today",
   "dashboard.hoursPlanned": "Hours planned",
+  "schedule.legendTitle": "Departments",
+  "schedule.undo": "Undo",
+  "schedule.deletedToast": "Shift deleted.",
+  "schedule.undoRestored": "Shift restored.",
+  "schedule.publishConfirmTitle": "Publish shifts?",
+  "schedule.publishConfirmDesc": "The team sees these on their schedule and gets a notification.",
+  "schedule.publishNow": "Publish {count}",
+  "schedule.cancel": "Cancel",
+  "schedule.openShift": "Open",
+  "schedule.andMore": "…and {count} more",
 };
 
 
@@ -147,6 +157,15 @@ const ES: Record<string, string> = {
   "dashboard.openShifts": "Turnos abiertos",
   "dashboard.onToday": "Hoy presente",
   "dashboard.hoursPlanned": "Horas planificadas",
+  "schedule.undo": "Deshacer",
+  "schedule.deletedToast": "Turno eliminado.",
+  "schedule.undoRestored": "Turno restaurado.",
+  "schedule.publishConfirmTitle": "¿Publicar turnos?",
+  "schedule.publishConfirmDesc": "El equipo los ve en su horario y recibe una notificación.",
+  "schedule.publishNow": "Publicar {count}",
+  "schedule.cancel": "Cancelar",
+  "schedule.openShift": "Abierto",
+  "schedule.andMore": "…y {count} más",
 };
 
 const CATALOGS: Record<Language, Record<string, string>> = { en: EN, es: ES };

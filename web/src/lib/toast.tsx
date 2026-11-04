@@ -8,16 +8,17 @@ interface Toast {
   id: number;
   message: string;
   tone: Tone;
+  action?: { label: string; run: () => void };
 }
 
-const ToastContext = createContext<(message: string, tone?: Tone) => void>(() => {});
+const ToastContext = createContext<(message: string, tone?: Tone, action?: { label: string; run: () => void }) => void>(() => {});
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const toast = useCallback((message: string, tone: Tone = "success") => {
+  const toast = useCallback((message: string, tone: Tone = "success", action?: { label: string; run: () => void }) => {
     const id = Date.now() + Math.random();
-    setToasts((list) => [...list, { id, message, tone }]);
+    setToasts((list) => [...list, { id, message, tone, action }]);
     setTimeout(() => {
       setToasts((list) => list.filter((t) => t.id !== id));
     }, 4200);
@@ -40,6 +41,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <Info className="mt-0.5 size-4 shrink-0 text-[#c9c1ac]" />
             )}
             <span className="flex-1 leading-snug">{t.message}</span>
+            {t.action && (
+              <button
+                onClick={() => {
+                  t.action?.run();
+                  setToasts((list) => list.filter((x) => x.id !== t.id));
+                }}
+                className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-[#9fd3b4] underline-offset-2 transition hover:underline"
+              >
+                {t.action.label}
+              </button>
+            )}
             <button
               onClick={() => setToasts((list) => list.filter((x) => x.id !== t.id))}
               className="text-[#a7a18f] transition hover:text-white"

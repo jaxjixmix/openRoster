@@ -177,10 +177,12 @@ async function main() {
     }, PB_URL);
     assert.ok(pastedId, "pasted shift exists");
     await page.locator(`[data-shift-id="${pastedId}"]`).first().click({ button: "right" });
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("menuitem", { name: /delete shift/i }).click();
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(500);
     assert.match(await page.locator(".fixed.bottom-5").innerText(), /Shift deleted/);
+    await page.locator(".fixed.bottom-5").getByRole("button", { name: /Undo/i }).click();
+    await page.waitForTimeout(700);
+    assert.match(await page.locator(".fixed.bottom-5").innerText(), /restored/i);
 
     await page.getByTestId("schedule-view-week").click();
     await page.waitForTimeout(600);

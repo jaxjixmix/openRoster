@@ -19,7 +19,7 @@ import {
   Repeat,
   Sparkles,
   Trash2,
-  UploadCloud,
+  Send,
 } from "lucide-react";
 import { pb } from "@/lib/pb";
 import { useAuth } from "@/lib/auth";
@@ -134,6 +134,8 @@ export default function SchedulePage() {
   const [copyTarget, setCopyTarget] = useState(addDaysStr(weekStart(today, Number(company?.week_start ?? "1")), 7));
   const [clipboard, setClipboard] = useState<Shift | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; shift: Shift | null; day: string } | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [undoCountdown, setUndoCountdown] = useState(0);
 
   const load = useCallback(async () => {
     if (!company) return;
@@ -251,22 +253,22 @@ export default function SchedulePage() {
     }
   }
 
-  async function publishAll() {
-    const drafts = visibleShifts.filter((s) => s.status === "draft");
-    if (!drafts.length) return;
+  const publishDrafts = async () => {
+    setPublishOpen(false);
     setBusy(true);
     try {
       await Promise.all(
-        drafts.map((s) => pb.collection("shifts").update(s.id, { status: "published" })),
+        publishPreview.map((shift) => pb.collection("shifts").update(shift.id, { status: "published" })),
       );
       await load();
-      toast(`Published ${drafts.length} draft shifts.`);
+      toast(`Published ${publishPreview.length} draft shift${publishPreview.length === 1 ? "" : "s"} to the team.`);
     } catch (err) {
       toast(errorMessage(err), "error");
+      await load();
     } finally {
       setBusy(false);
     }
-  }
+  };
 
   async function offerSwap() {
     if (!selected) return
@@ -444,20 +446,43 @@ export default function SchedulePage() {
     await createCopies(menu.shift, dates, "repeated shift");
   }
 
+  function undoDelete(source: Shift): () => void {
+    return () => {
+      const date = dateInTz(source.starts_at, tz);
+      pb.collection("shifts")
+        .create(copiedPayload(source, date))
+        .then(() => {
+          setUndoCountdown(0);
+          setMenu(null);
+          void load();
+          toast(t("schedule.undoRestored"));
+        })
+        .catch(() => {});
+    };
+  }
+
   async function deleteShift(shift: Shift) {
     setMenu(null);
-    if (!window.confirm("Delete this shift? This cannot be undone.")) return;
     setBusy(true);
     try {
       await pb.collection("shifts").delete(shift.id);
       await load();
-      toast("Shift deleted.");
+      toast(t("schedule.deletedToast"), "info", { label: t("schedule.undo"), run: undoDelete(shift) });
+      setUndoCountdown(30);
     } catch (err) {
       toast(errorMessage(err), "error");
     } finally {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (undoCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setUndoCountdown((seconds) => (seconds <= 1 ? 0 : seconds - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [undoCountdown]);
 
   useEffect(() => {
     if (!menu) return;
@@ -481,13 +506,23 @@ export default function SchedulePage() {
     if (rangeView !== "day" && rangeView !== "week" && layout === "timeline") setLayout("board");
   }, [rangeView, layout]);
 
-  const periodLabel = rangeView === "day" ? "today" : rangeView === "week" ? "this week" : "in this view";
   const rangeLabel =
     rangeView === "day"
       ? longDate(anchor)
       : rangeView === "month"
         ? monthYear(anchor)
         : `${monthDay(rangeStart)} – ${monthDay(addDaysStr(rangeEnd, -1))}, ${rangeStart.slice(0, 4)}`;
+
+  const periodLabel =
+    rangeView === "day" ? rangeLabel.split(",")[0] : rangeView === "week" ? "this week" : "in this view";
+  const publishPreview = useMemo(
+    () => visibleShifts.filter((shift) => shift.status === "draft"),
+    [visibleShifts],
+  );
+  const publishDraftsCount = publishPreview.length;
+  const timeLabel = (shift: Shift) =>
+    `${formatInTimeZone(toDate(shift.starts_at), tz, "h a")}–${formatInTimeZone(toDate(shift.ends_at), tz, "h a")}`;
+
 
 
   function renderShiftCard(shift: Shift) {
@@ -620,8 +655,8 @@ export default function SchedulePage() {
         actions={
           isManager ? (
             <>
-              <Button variant="outline" size="sm" onClick={publishAll} disabled={!draftCount || busy}>
-                <UploadCloud className="size-3.5" /> {t("schedule.publish")}{draftCount ? ` ${draftCount}` : ""}
+              <Button variant="outline" size="sm" onClick={() => setPublishOpen(true)} disabled={!draftCount || busy}>
+                <Send className="size-3.5" /> {t("schedule.publish")}{draftCount ? ` ${draftCount}` : ""}
               </Button>
               {(rangeView === "day" || rangeView === "week") && (
                 <>
@@ -1017,6 +1052,31 @@ export default function SchedulePage() {
           )}
         </div>
       )}
+
+      <Modal
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        title={t("schedule.publishConfirmTitle")}
+        description={t("schedule.publishConfirmDesc")}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPublishOpen(false)}>{t("schedule.cancel")}</Button>
+            <Button onClick={publishDrafts} loading={busy}>{t("schedule.publishNow", { count: publishDraftsCount })}</Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          {publishPreview.slice(0, 6).map((shift) => (
+            <div key={shift.id} className="flex items-center justify-between rounded-lg bg-[#f7f4ec] px-3 py-2 text-xs">
+              <span className="truncate">{monthDay(dateInTz(shift.starts_at, tz))} · {timeLabel(shift)}</span>
+              <span className="truncate pl-2 text-muted">{shift.expand?.employee ? fullName(shift.expand.employee) : t("schedule.openShift")}</span>
+            </div>
+          ))}
+          {publishPreview.length > 6 && (
+            <p className="text-[11px] text-muted">{t("schedule.andMore", { count: publishPreview.length - 6 })}</p>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         open={copyOpen}
