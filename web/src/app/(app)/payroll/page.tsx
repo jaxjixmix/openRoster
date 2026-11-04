@@ -520,26 +520,86 @@ export default function PayrollPage() {
       >
         {detailRun && (
           <div>
-            <div className="mb-3 flex justify-end">
+            <div className="mb-3 flex justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => downloadCsv(`pay-stubs-${detailRun.id}.csv`, detailStubs.map((stub) => ({
-                  employee: fullName(stub.expand?.employee),
+                  run_id: detailRun.id,
+                  run_status: detailRun.status,
+                  employee_ref: stub.employee,
+                  employee_name: fullName(stub.expand?.employee),
                   period_start: detailRun.period_start,
                   period_end: detailRun.period_end,
+                  pay_date: detailRun.pay_date || "",
+                  currency: company?.currency || "USD",
                   regular_hours: stub.regular_hours || 0,
                   overtime_hours: stub.overtime_hours || 0,
                   pto_hours: stub.pto_hours || 0,
                   gross_pay: stub.gross_pay || 0,
                   employee_taxes: stub.employee_taxes || 0,
                   employee_deductions: stub.employee_deductions || 0,
+                  employer_taxes: stub.employer_taxes || 0,
                   net_pay: stub.net_pay || 0,
-                  status: detailRun.status,
                 })))}
                 disabled={!detailStubs.length}
               >
-                <Download className="size-3.5" /> Export stubs
+                <Download className="size-3.5" /> Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!detailStubs.length}
+                onClick={() => {
+                  const payload = {
+                    contract_version: 1,
+                    generated_at: new Date().toISOString(),
+                    run: {
+                      id: detailRun.id,
+                      status: detailRun.status,
+                      period_start: detailRun.period_start,
+                      period_end: detailRun.period_end,
+                      pay_date: detailRun.pay_date || "",
+                      void_reason: detailRun.void_reason || "",
+                    },
+                    currency: company?.currency || "USD",
+                    totals: {
+                      gross: detailRun.total_gross,
+                      employee_taxes: detailRun.total_tax,
+                      employee_deductions: detailRun.total_deductions,
+                      net: detailRun.total_net,
+                    },
+                    payments: detailStubs.map((stub) => ({
+                      employee_ref: stub.employee,
+                      employee_name: fullName(stub.expand?.employee),
+                      hours: {
+                        regular: stub.regular_hours || 0,
+                        overtime: stub.overtime_hours || 0,
+                        pto: stub.pto_hours || 0,
+                      },
+                      pay: {
+                        regular: stub.regular_pay || 0,
+                        overtime: stub.overtime_pay || 0,
+                        pto: stub.pto_pay || 0,
+                        gross: stub.gross_pay || 0,
+                        employee_taxes: stub.employee_taxes || 0,
+                        employee_deductions: stub.employee_deductions || 0,
+                        employer_taxes: stub.employer_taxes || 0,
+                        net: stub.net_pay || 0,
+                      },
+                      lines: stub.breakdown || [],
+                    })),
+                  };
+                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = `pay-run-${detailRun.id}.json`;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                <FileText className="size-3.5" /> Export JSON
               </Button>
             </div>
             <div className="grid grid-cols-4 gap-3 rounded-xl bg-[#f2eee3] p-4">

@@ -919,6 +919,48 @@ routerAdd("POST", "/api/openroster/payroll/status", (e) => {
     run.set("voided_at", new Date().toISOString())
     run.set("void_reason", String(body.reason || "Voided by manager"))
     txApp.save(run)
+
+    // Full reversal for paid runs: stubs and pay history stay, but the era reopens.
+    if (from === "paid") {
+      const paidSheets = txApp.findRecordsByFilter(
+        "timesheets",
+        "employee.company = {:company} && period_start >= {:start} && period_end <= {:end} && status = 'paid'",
+        "",
+        1000,
+        0,
+        {
+          company: run.getString("company"),
+          start: run.getString("period_start"),
+          end: run.getString("period_end"),
+        }
+      )
+      paidSheets.forEach((sheet) => {
+        sheet.set("status", "approved")
+        txApp.save(sheet)
+      })
+    }
+
+    // Reverse the PTO accrual this run booked so a replacement run re-books it.
+    const accruals = txApp.findRecordsByFilter(
+      "pto_entries",
+      "company = {:company} && type = 'accrual' && period_start = {:start}",
+      "",
+      1000,
+      0,
+      { company: run.getString("company"), start: run.getString("period_start").slice(0, 10) + " 00:00:00.000Z" }
+    )
+    accruals.forEach((entry) => {
+      txApp.delete(entry)
+      const employeeId = entry.getString("employee")
+      if (employeeId) {
+        const rest = txApp.findRecordsByFilter("pto_entries", "employee = {:employee}", "", 10000, 0, { employee: employeeId })
+        const balance = rest.reduce((sum, row) => sum + (row.getFloat("hours") || 0), 0)
+        const employee = txApp.findRecordById("employees", employeeId)
+        employee.set("pto_balance_hours", Math.round(balance * 100) / 100)
+        txApp.save(employee)
+      }
+    })
+
     try {
       const period = txApp.findFirstRecordByFilter(
         "pay_periods",

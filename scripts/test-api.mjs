@@ -657,6 +657,9 @@ async function main() {
     });
     assert.equal(voided.status, 200, "paid run can be voided");
 
+    const revertedSheets = await request(`/api/collections/timesheets/records?perPage=50&filter=${encodeURIComponent("status = 'approved'")}`, { token });
+    assert.ok(revertedSheets.data.totalItems > 0, "void reverts paid timesheets to approved");
+
     const reopenedPeriods = await request("/api/collections/pay_periods/records?perPage=200", { token });
     const reopenedPeriod = reopenedPeriods.data.items.find((period) => period.period_start.slice(0, 10) === payStart);
     assert.equal(reopenedPeriod.status, "open", "voiding reopens the period");
@@ -668,6 +671,76 @@ async function main() {
     });
     assert.equal(replacement.status, 200, "voided period can be rerun");
     console.log("PASS pay run void and replacement");
+
+    const suAuth = await request("/api/collections/_superusers/auth-with-password", {
+      method: "POST",
+      body: { identity: SUPER_EMAIL, password: SUPER_PASSWORD },
+    });
+    assert.equal(suAuth.status, 200, "superuser login for accrual test");
+    const su = suAuth.data.token;
+    const companyPatch = await request(`/api/collections/companies/records/${bootstrap.data.company.id}`, {
+      method: "PATCH",
+      token: su,
+      body: { pto_accrual_hours_per_period: 2 },
+    });
+    assert.equal(companyPatch.status, 200);
+
+    const allPeriods = await request("/api/collections/pay_periods/records?perPage=200&sort=period_start", { token });
+    const laterPeriod = allPeriods.data.items.find((period) => period.period_start.slice(0, 10) > payEnd);
+    assert.ok(laterPeriod, "a later pay period exists");
+    const accrualPeriodStart = laterPeriod.period_start.slice(0, 10);
+    const accrualPeriodEnd = accrualDepositEnd(laterPeriod);
+
+    function accrualDepositEnd(period) {
+      return new Date(new Date(period.period_end).getTime() + 86400000).toISOString().slice(0, 10);
+    }
+
+    const accrualRun = await request("/api/openroster/payroll/run", {
+      method: "POST",
+      token,
+      body: { period_start: accrualPeriodStart, period_end: accrualPeriodEnd },
+    });
+    assert.equal(accrualRun.status, 200, accrualRun.data.message || "accrual run created");
+    const accrualRunId = accrualRun.data.run ? accrualRun.data.run.id : accrualRun.data.run_id;
+    assert.ok(accrualRunId, "accrual run id present");
+
+    const accrualsBefore = await request(
+      `/api/collections/pto_entries/records?perPage=50&filter=${encodeURIComponent(`type = 'accrual' && period_start = "${accrualPeriodStart} 00:00:00.000Z"`)}`,
+      { token }
+    );
+    assert.ok(accrualsBefore.data.items.length > 0, "payroll run books PTO accruals");
+
+    const accrualApprove = await request("/api/openroster/payroll/status", {
+      method: "POST",
+      token,
+      body: { run: accrualRunId, status: "approved" },
+    });
+    assert.equal(accrualApprove.status, 200);
+    const accrualPaid = await request("/api/openroster/payroll/status", {
+      method: "POST",
+      token,
+      body: { run: accrualRunId, status: "paid" },
+    });
+    assert.equal(accrualPaid.status, 200);
+
+    const accrualVoid = await request("/api/openroster/payroll/status", {
+      method: "POST",
+      token,
+      body: { run: accrualRunId, status: "voided", reason: "accrual reversal test" },
+    });
+    assert.equal(accrualVoid.status, 200);
+
+    const accrualsAfter = await request(
+      `/api/collections/pto_entries/records?perPage=50&filter=${encodeURIComponent(`type = 'accrual' && period_start = "${accrualPeriodStart} 00:00:00.000Z"`)}`,
+      { token }
+    );
+    assert.equal(accrualsAfter.data.totalItems, 0, "void deletes the run's PTO accruals");
+    await request(`/api/collections/companies/records/${bootstrap.data.company.id}`, {
+      method: "PATCH",
+      token: su,
+      body: { pto_accrual_hours_per_period: 0 },
+    });
+    console.log("PASS pay run void reverses accruals");
 
     const sheets = await request("/api/collections/timesheets/records?perPage=50", { token });
     const lockedSheet = sheets.data.items.find((sheet) => sheet.status === "approved" || sheet.status === "paid");

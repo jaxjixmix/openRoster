@@ -47,3 +47,45 @@ Companies can set `punch_rounding_minutes` (0 disables it). Daily worked minutes
 - tax tables, filings, direct deposit
 - full pay-period calendar UI (generation and selection are implemented; editing/closure is automatic)
 - translated UI copy (locale only changes currency/date formatting)
+
+
+## Export contract (#6)
+
+OpenRoster is intentionally export-only: it calculates gross pay from configurable rules and hands a stable file to an accountant or payroll provider. It does not file taxes, move money, or maintain withholding tables. `Export CSV` / `Export JSON` on a pay run detail are the contract.
+
+### CSV columns (v1, stable order)
+
+`run_id, run_status, employee_ref, employee_name, period_start, period_end, pay_date, currency, regular_hours, overtime_hours, pto_hours, gross_pay, employee_taxes, employee_deductions, employer_taxes, net_pay`
+
+One row per employee per run. `employee_ref` is the OpenRoster employee record id; map it once in your provider/accounting import and keep the mapping.
+
+### JSON shape (contract_version 1)
+
+```json
+{
+  "contract_version": 1,
+  "generated_at": "ISO-8601",
+  "run": { "id": "…", "status": "approved", "period_start": "…", "period_end": "…", "pay_date": "…", "void_reason": "" },
+  "currency": "USD",
+  "totals": { "gross": 0, "employee_taxes": 0, "employee_deductions": 0, "net": 0 },
+  "payments": [{
+    "employee_ref": "…",
+    "employee_name": "…",
+    "hours": { "regular": 0, "overtime": 0, "pto": 0 },
+    "pay": { "regular": 0, "overtime": 0, "pto": 0, "gross": 0, "employee_taxes": 0, "employee_deductions": 0, "employer_taxes": 0, "net": 0 },
+    "lines": [ { "name": "…", "type": "federal_tax", "calc": "percent", "rate": 0, "amount": 0, "employer": false } ]
+  }]
+}
+```
+
+- Missing/null numeric fields are always present as `0`.
+- `run.status` is `draft | approved | paid | voided`. Treat `voided` as "do not pay this"; period totals in a later run supersede it.
+- View the columns as append-only: new fields may be added to the JSON, existing field semantics do not change.
+
+### Void / reversal
+
+Voiding a draft/approved run frees the period for a clean re-run. Voiding a `paid` run additionally reverts that period's paid timesheets back to `approved` and deletes the PTO accrual entries the run booked (balances are recalculated from the ledger). Pay stubs and the pay-run record are kept for the audit trail. There is no in-app Cancellation-of-submission: if a provider already received the file, issue their correction/supplement outside OpenRoster.
+
+### Provider sandbox
+
+No provider integration ships. When one is added, it should consume this JSON as upsert with `run.id` as the provider idempotency key and reconcile webhooks against `run.status`.
