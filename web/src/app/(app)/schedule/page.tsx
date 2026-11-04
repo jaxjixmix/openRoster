@@ -511,26 +511,26 @@ export default function SchedulePage() {
         style={{ borderLeft: `3px solid ${color}` }}
       >
         <div className="flex items-center justify-between gap-1">
-          <span className="font-mono text-[8px] leading-none text-muted">{startLabel}–{endLabel}</span>
-          <span className="font-mono text-[8px] leading-none text-muted/70">{hrs.toFixed(1)}h</span>
+          <span className="font-mono text-[11px] leading-none tabular text-ink">{startLabel}–{endLabel}</span>
+          <span className="font-mono text-[11px] leading-none tabular text-muted">{hrs.toFixed(1)}h</span>
         </div>
         <p className="mt-1 truncate text-[10px] font-semibold leading-tight text-ink">
           {shift.expand?.position?.name || shift.expand?.department?.name || "Shift"}
         </p>
         <div className="mt-1.5 flex items-center gap-1.5">
           {open ? (
-            <span className="inline-flex rounded-full border border-[#edd0c1] bg-[#f6e2d8] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-[#9a3b1f]">
+            <span className="inline-flex rounded-full border border-[#edd0c1] bg-[#f6e2d8] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#9a3b1f]">
               Open
             </span>
           ) : (
             <>
               <Avatar name={fullName(shift.expand?.employee)} id={shift.employee} size="xs" className="!size-4 !text-[7px]" />
-              <span className="truncate text-[9px] text-muted">
+              <span className="truncate text-[11px] font-semibold text-ink">
                 {fullName(shift.expand?.employee).split(" ")[0]}
               </span>
             </>
           )}
-          {shift.status === "draft" && <span className="ml-auto text-[8px] font-medium uppercase text-[#82621c]">Draft</span>}
+          {shift.status === "draft" && <span className="ml-auto text-[10px] font-medium uppercase text-[#82621c]">Draft</span>}
         </div>
       </button>
     );
@@ -558,7 +558,7 @@ export default function SchedulePage() {
       >
         <div className={cn("flex items-center justify-between border-b border-line px-2.5 py-2", day === today && "border-[#e4d6c2]")}>
           <div>
-            <p className={cn("text-[9px] font-semibold uppercase tracking-[0.12em]", day === today ? "text-accent" : "text-muted")}>
+            <p className={cn("text-[10px] font-semibold uppercase tracking-[0.12em]", day === today ? "text-accent" : "text-muted")}>
               {weekdayShort(day)}
             </p>
             <p className={cn("text-base font-semibold leading-tight tabular", day === today ? "text-accent" : "text-ink")}>
@@ -566,8 +566,8 @@ export default function SchedulePage() {
             </p>
           </div>
           <div className="text-right">
-            <p className="font-mono text-[9px] tabular text-muted">{dayHours.toFixed(1)}h</p>
-            <p className={cn("text-[9px]", dayOpen ? "font-medium text-accent" : "text-muted/70")}>{dayOpen ? `${dayOpen} open` : "covered"}</p>
+            <p className="font-mono text-[11px] tabular text-ink">{dayHours.toFixed(1)}h</p>
+            <p className={cn("text-[10px]", dayOpen ? "font-medium text-accent" : "text-muted")}>{dayOpen ? `${dayOpen} open` : t("schedule.dayFullyStaffed")}</p>
           </div>
         </div>
         <div className="flex-1 space-y-1.5 p-1.5">
@@ -575,7 +575,7 @@ export default function SchedulePage() {
           {hidden > 0 && (
             <button
               onClick={() => openDay(day)}
-              className="w-full rounded-lg border border-dashed border-line py-1.5 text-[9px] font-medium text-muted transition hover:border-line-strong hover:text-ink"
+              className="w-full rounded-lg border border-dashed border-line py-1.5 text-[11px] font-medium text-muted transition hover:border-line-strong hover:text-ink"
             >
               +{hidden} more · {t("schedule.viewDay")}
             </button>
@@ -584,7 +584,7 @@ export default function SchedulePage() {
             <button
               onClick={() => isManager && openNew(day)}
               onContextMenu={(event) => openMenu(event, undefined, day)}
-              className="w-full rounded-lg border border-dashed border-line py-6 text-[10px] text-muted/60 transition hover:border-line-strong hover:text-muted"
+              className="w-full rounded-lg border border-dashed border-line py-6 text-[11px] text-muted/70 transition hover:border-line-strong hover:text-muted"
             >
               {isManager ? t("schedule.addShift") : "No shifts"}
             </button>
@@ -826,7 +826,7 @@ export default function SchedulePage() {
             {Array.from({ length: (END_MIN - START_MIN) / 60 + 1 }, (_, i) => {
               const hour = START_MIN / 60 + i;
               return (
-                <div key={hour} className="absolute right-2 -translate-y-1/2 text-[9px] font-medium text-muted/70" style={{ top: i * PX_PER_HOUR }}>
+                <div key={hour} className="absolute right-2 -translate-y-1/2 text-[10px] font-medium text-muted" style={{ top: i * PX_PER_HOUR }}>
                   {hour === 12 ? "12p" : hour > 12 ? `${hour - 12}p` : `${hour}a`}
                 </div>
               );
@@ -869,7 +869,7 @@ export default function SchedulePage() {
                       onKeyDown={(event) => openMenuFromKeyboard(event, shift)}
                       aria-haspopup="menu"
                       className={cn(
-                        "group absolute overflow-hidden rounded-md border-l-[3px] px-1.5 py-1 text-left transition hover:z-20 hover:shadow-lg",
+                        "group absolute flex flex-col items-start justify-start gap-y-0.5 overflow-hidden rounded-md border-l-[3px] px-1.5 py-1 text-left transition hover:z-20 hover:shadow-lg",
                         open && "border border-dashed border-l-[3px]",
                       )}
                       style={{
@@ -883,19 +883,19 @@ export default function SchedulePage() {
                       }}
                       title={`${formatTime(shift.starts_at, tz)} – ${formatTime(shift.ends_at, tz)} · ${shift.expand?.employee ? fullName(shift.expand.employee) : "Open"} · Right-click for actions`}
                     >
-                      <p className="truncate font-mono text-[9px] leading-tight text-muted">
+                      <p className="truncate font-mono text-[10px] leading-tight tabular text-ink">
                         {formatTime(shift.starts_at, tz)}–{formatTime(shift.ends_at, tz)}
                       </p>
-                      <p className="truncate text-[10px] font-semibold leading-tight text-ink">
+                      <p className="truncate text-[11px] font-semibold leading-tight text-ink">
                         {open ? "Open shift" : fullName(shift.expand?.employee)}
                       </p>
                       {height > 42 && (
-                        <p className="truncate text-[9px] leading-tight text-muted">
+                        <p className="truncate text-[10px] leading-tight text-muted">
                           {shift.expand?.position?.name || shift.expand?.department?.name}
                         </p>
                       )}
                       {height > 58 && shift.status === "draft" && (
-                        <span className="mt-1 inline-block rounded bg-white/70 px-1 text-[8px] font-semibold uppercase tracking-wider text-[#82621c]">
+                        <span className="mt-1 inline-block rounded bg-white/70 px-1 text-[10px] font-semibold uppercase tracking-wider text-[#82621c]">
                           Draft
                         </span>
                       )}
@@ -905,7 +905,7 @@ export default function SchedulePage() {
                 {dayShifts.length === 0 && (
                   <button
                     onClick={() => isManager && openNew(day)}
-                    className="absolute inset-x-2 top-3 rounded-lg border border-dashed border-line py-2 text-[10px] text-muted/60 transition hover:border-line-strong hover:text-muted"
+                    className="absolute inset-x-2 top-3 rounded-lg border border-dashed border-line py-2 text-[11px] text-muted/70 transition hover:border-line-strong hover:text-muted"
                   >
                     {isManager ? "+ Add" : ""}
                   </button>
@@ -922,7 +922,7 @@ export default function SchedulePage() {
             <div className="flex items-center justify-between border-b border-line bg-[#f7f4ec] px-4 py-2.5">
               <p className={cn("text-xs font-semibold", day === today && "text-accent")}>
                 {weekdayShort(day)} · {monthDay(day)}
-                {day === today && <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[9px] uppercase text-white">Today</span>}
+                {day === today && <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[10px] uppercase text-white">{t("schedule.today")}</span>}
               </p>
               {isManager && (
                 <button onClick={() => openNew(day)} className="text-[11px] font-medium text-accent">

@@ -140,6 +140,8 @@ const ES: Record<string, string> = {
   "schedule.dayActions": "Acciones del turno",
   "schedule.viewDay": "ver el día",
   "schedule.copiedToast": "Turno copiado. Haz clic derecho en un día u otro turno para pegar.",
+  "schedule.today": "Hoy",
+  "schedule.dayFullyStaffed": "Cubierto",
 
   "dashboard.openShifts": "Turnos abiertos",
   "dashboard.onToday": "Hoy presente",
