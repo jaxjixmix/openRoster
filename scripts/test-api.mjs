@@ -442,10 +442,11 @@ async function main() {
     const recommendBadWeek = await request("/api/openroster/demand/recommend", { method: "POST", token, body: { week_start: "nope", covers: [1,1,1,1,1,1,1] } });
     assert.equal(recommendBadWeek.status, 400);
 
+    const storeWeek = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
     const demandSet = await request("/api/collections/demand_forecasts/records", {
       method: "POST",
       token,
-      body: { company: bootstrap.data.company.id, week_start: weekStartStr, location: "", days: { [weekStartStr]: 50 }, productivity: 16, break_minutes: 30 },
+      body: { company: bootstrap.data.company.id, week_start: storeWeek, location: "", days: { [storeWeek]: 50 }, productivity: 16, break_minutes: 30 },
     });
     assert.equal(demandSet.status, 200, JSON.stringify(demandSet.data));
 

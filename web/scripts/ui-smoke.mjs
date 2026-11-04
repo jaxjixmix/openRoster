@@ -164,8 +164,38 @@ async function main() {
     await page.waitForTimeout(700);
     console.log("PASS schedule url state");
 
-    const reloadCard = page.locator("[data-shift-id]").first();
-    await reloadCard.click({ button: "right" });
+    // deterministic open shift for drag/copy/paste — independent of seed availability
+    const firstDay = await page.locator("[data-day-cell]").first().getAttribute("data-day-cell");
+    const secondDay = await page.locator("[data-day-cell]").nth(1).getAttribute("data-day-cell");
+    const testShift = await page.evaluate(async ({ pbUrl, firstDayInput }) => {
+      const auth = JSON.parse(localStorage.getItem("pocketbase_auth") || "{}");
+      const headers = { Authorization: auth.token, "Content-Type": "application/json" };
+      const bootstrap = await (await fetch(`${pbUrl}/api/openroster/bootstrap`, { headers })).json();
+      const res = await fetch(`${pbUrl}/api/collections/shifts/records`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          company: bootstrap.company.id,
+          starts_at: `${firstDayInput}T17:00:00.000Z`,
+          ends_at: `${firstDayInput}T18:00:00.000Z`,
+          local_date: `${firstDayInput} 00:00:00.000Z`,
+          local_start: "09:00",
+          local_end: "10:00",
+          break_minutes: 0,
+          status: "draft",
+          source: "manual",
+          notes: "ui-smoke drag test",
+        }),
+      });
+      return res.ok ? await res.json() : null;
+    }, { pbUrl: PB_URL, firstDayInput: firstDay });
+    assert.ok(testShift?.id, "drag test shift created");
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(900);
+    const testCard = page.locator(`[data-shift-id="${testShift.id}"]`).first();
+    await testCard.scrollIntoViewIfNeeded();
+
+    await testCard.click({ button: "right" });
     await page.getByRole("menu").waitFor();
     assert.match(await page.getByRole("menu").innerText(), /Copy shift/);
     assert.match(await page.getByRole("menu").innerText(), /Repeat next week/);
@@ -174,13 +204,30 @@ async function main() {
     await page.waitForTimeout(300);
     assert.match(await page.locator(".fixed.bottom-5").innerText(), /Shift copied/);
 
+    await page.evaluate(({ shiftId, targetDayInput }) => {
+      const source = document.querySelector(`[data-shift-id="${shiftId}"]`);
+      const target = document.querySelector(`[data-day-cell="${targetDayInput}"]`);
+      if (!source || !target) throw new Error("drag nodes missing");
+      const transfer = new DataTransfer();
+      source.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: transfer }));
+      target.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    }, { shiftId: testShift.id, targetDayInput: secondDay });
+    await page.getByText(/moved to/i).first().waitFor({ timeout: 8000 });
+    const moved = await page.evaluate(async ({ pbUrl, shiftId }) => {
+      const auth = JSON.parse(localStorage.getItem("pocketbase_auth") || "{}");
+      const res = await fetch(`${pbUrl}/api/collections/shifts/records/${shiftId}`, { headers: { Authorization: auth.token } });
+      return res.ok ? await res.json() : null;
+    }, { pbUrl: PB_URL, shiftId: testShift.id });
+    assert.equal(moved.local_date.slice(0, 10), secondDay, "drag updates local_date");
+    console.log("PASS drag-to-move");
+
     await page.getByTestId("schedule-view-month").click();
     await page.waitForTimeout(500);
     const emptyDay = page.locator("[data-day-cell]").locator("button", { hasText: "+ Add shift" }).first();
     await emptyDay.click({ button: "right" });
     await page.getByRole("menuitem", { name: /Paste (shift )?here/i }).click();
-    await page.waitForTimeout(900);
-    assert.match(await page.locator(".fixed.bottom-5").innerText(), /Created 1 shift/);
+    await page.getByText(/Created 1 shift/).first().waitFor({ timeout: 8000 });
     const pastedId = await page.evaluate(async (pbUrl) => {
       const auth = JSON.parse(localStorage.getItem("pocketbase_auth") || "{}");
       const res = await fetch(`${pbUrl}/api/collections/shifts/records?perPage=1&sort=-created`, {

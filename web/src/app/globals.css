@@ -134,3 +134,10 @@ body {
   top: 0;
   z-index: 10;
 }
+
+/* Drop target while dragging a shift between days. */
+[data-drag-over="true"] {
+  outline: 2px dashed var(--color-accent, #c4512c);
+  outline-offset: -2px;
+  background-color: #fbf6ec;
+}

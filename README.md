@@ -31,7 +31,7 @@ OpenRoster is a **working alpha**. Current release: **v0.4.0-alpha**. The delive
 - **PTO ledger** — carryover, accrual, approved usage and manual adjustments; balances recalculate from the ledger.
 - **Self-service** — staff profile, availability editing, PTO history and time-off requests.
 - **Open shifts** — staff can see published open shifts and claim them; the server checks leave, availability and weekly hours.
-- **Schedule** — day, week, 2-week, 4-week and month views; board and hour-by-hour timeline; right-click shift actions (copy, paste, repeat, delete); location filter, draft/publish, copy week, shift swaps, recurring templates, labor-budget warnings, realtime updates, overlap/leave/certification checks.
+- **Schedule** — day, week, 2-week, 4-week and month views; board and hour-by-hour timeline; right-click shift actions (copy, paste, repeat, delete) and drag-to-move between days; location filter, draft/publish, copy week, shift swaps, recurring templates, labor-budget warnings, realtime updates, overlap/leave/certification checks.
 - **Auto-fill** — assigns open shifts using availability, approved time off, existing shifts, weekly hour caps and position fit. It leaves genuinely uncovered shifts open instead of guessing.
 - **Time clock** — clock in/out, break start/end, optional rounding, PIN-locked kiosk mode, live “on the clock” list, duplicate-punch and backdating protection.
 - **Timesheets** — generated from punches (scheduled hours are a fallback), daily and weekly overtime, PTO, approve individually or in bulk. Approved sheets are locked.

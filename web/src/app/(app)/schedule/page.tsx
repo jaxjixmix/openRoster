@@ -162,6 +162,7 @@ export default function SchedulePage() {
   const [publishOpen, setPublishOpen] = useState(false);
   const [undoCountdown, setUndoCountdown] = useState(0);
   const urlTouched = useRef(false);
+  const dragSourceRef = useRef<string | null>(null);
   const [menuUsed, setMenuUsed] = useState(true);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuOpenerRef = useRef<HTMLElement | null>(null);
@@ -485,6 +486,34 @@ export default function SchedulePage() {
     await createCopies(menu.shift, dates, "repeated shift");
   }
 
+  async function moveShiftToDay(shiftId: string, targetDay: string) {
+    dragSourceRef.current = null;
+    if (!isManager || !shiftId) return;
+    const shift = visibleShifts.find((row) => row.id === shiftId);
+    if (!shift) return;
+    const fromDay = dateInTz(shift.starts_at, tz);
+    if (fromDay === targetDay) return; // same-day drop is a no-op
+    const dayDelta = Math.round(
+      (Date.parse(targetDay + "T00:00:00Z") - Date.parse(fromDay + "T00:00:00Z")) / 86400000,
+    );
+    const patch = {
+      starts_at: new Date(+toDate(shift.starts_at) + dayDelta * 86400000).toISOString(),
+      ends_at: new Date(+toDate(shift.ends_at) + dayDelta * 86400000).toISOString(),
+      local_date: `${targetDay} 00:00:00.000Z`,
+    };
+    setBusy(true);
+    try {
+      await pb.collection("shifts").update(shift.id, patch);
+      await load();
+      toast(t("schedule.movedToast", { day: monthDay(targetDay) }));
+    } catch (err) {
+      toast(errorMessage(err), "error");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function undoDelete(source: Shift): () => void {
     return () => {
       const date = dateInTz(source.starts_at, tz);
@@ -601,6 +630,16 @@ export default function SchedulePage() {
       <div
         key={shift.id}
         data-shift-id={shift.id}
+        draggable={isManager}
+        onDragStart={(event) => {
+          dragSourceRef.current = shift.id;
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", shift.id);
+        }}
+        onDragEnd={() => {
+          dragSourceRef.current = null;
+          document.querySelectorAll<HTMLElement>("[data-drag-over]").forEach((node) => delete node.dataset.dragOver);
+        }}
         onContextMenu={(event) => openMenu(event, shift)}
         className={cn(
           "group relative w-full rounded-lg border border-line bg-raised p-2 pr-8 text-left transition hover:border-line-strong hover:shadow-sm",
@@ -668,6 +707,23 @@ export default function SchedulePage() {
         key={day}
         data-day-cell={day}
         onContextMenu={(event) => openMenu(event, undefined, day)}
+        onDragOver={(event) => {
+          if (!isManager) return;
+          event.preventDefault();
+          (event.currentTarget as HTMLElement).dataset.dragOver = "true";
+        }}
+        onDragLeave={(event) => {
+          delete (event.currentTarget as HTMLElement).dataset.dragOver;
+        }}
+        onDrop={(event) => {
+          delete (event.currentTarget as HTMLElement).dataset.dragOver;
+          const draggedId = dragSourceRef.current;
+          if (draggedId) void moveShiftToDay(draggedId, day);
+          else {
+            const text = event.dataTransfer.getData("text/plain");
+            if (text) void moveShiftToDay(text, day);
+          }
+        }}
         onClick={(event) => {
           const target = event.target as HTMLElement;
           if (event.detail === 2 && isManager && target.tagName !== "BUTTON") openNew(day);

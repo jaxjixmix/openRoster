@@ -86,6 +86,7 @@ const EN: Record<string, string> = {
   "schedule.rangeLabel": "Schedule range",
   "schedule.locationFilter": "Filter by location",
   "schedule.noShifts": "No shifts",
+  "schedule.movedToast": "Shift moved to {day}.",
 };
 
 
@@ -174,6 +175,7 @@ const ES: Record<string, string> = {
   "schedule.rangeLabel": "Rango del horario",
   "schedule.locationFilter": "Filtrar por ubicación",
   "schedule.noShifts": "Sin turnos",
+  "schedule.movedToast": "Turno movido a {day}.",
 };
 
 const CATALOGS: Record<Language, Record<string, string>> = { en: EN, es: ES };
