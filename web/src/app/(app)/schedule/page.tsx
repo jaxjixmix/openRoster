@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import {
   CalendarClock,
@@ -108,8 +108,15 @@ export default function SchedulePage() {
   const money = useMoney();
   const tz = company?.timezone || "America/Los_Angeles";
   const today = todayIn(tz);
-  const [anchor, setAnchor] = useState(today);
-  const [rangeView, setRangeView] = useState<ScheduleView>("week");
+  const saved = useMemo(() => {
+    if (typeof window === "undefined") return null as null | URLSearchParams;
+    return new URLSearchParams(window.location.search);
+  }, []);
+  const [anchor, setAnchor] = useState(saved?.get("week") && /^\d{4}-\d{2}-\d{2}$/.test(saved.get("week")!) ? saved.get("week")! : today);
+  const [rangeView, setRangeView] = useState<ScheduleView>(() => {
+    const value = saved?.get("view");
+    return value === "day" || value === "week" || value === "2weeks" || value === "4weeks" || value === "month" ? value : "week";
+  });
   const weekStartsOn = Number(company?.week_start ?? "1");
   const range = useMemo(() => scheduleRange(anchor, rangeView, weekStartsOn), [anchor, rangeView, weekStartsOn]);
   const rangeStart = range.start;
@@ -124,6 +131,24 @@ export default function SchedulePage() {
   const [locations, setLocations] = useState<Awaited<ReturnType<typeof getLocations>>>([]);
   const [locationFilter, setLocationFilter] = useState("");
   const [layout, setLayout] = useState<"board" | "timeline">("board");
+
+  useEffect(() => {
+    if (saved?.get("layout") === "timeline") setLayout("timeline");
+  }, [saved]);
+
+  useEffect(() => {
+    if (saved?.get("view") === undefined && !urlTouched.current) {
+      // keep the first paint URL untouched; sync once the user changes something
+      urlTouched.current = true;
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set("view", rangeView);
+    params.set("week", rangeStart);
+    if (layout === "timeline") params.set("layout", "timeline");
+    const url = `/schedule?${params.toString()}`;
+    window.history.replaceState({}, "", url);
+  }, [rangeView, rangeStart, layout, saved]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -136,7 +161,10 @@ export default function SchedulePage() {
   const [menu, setMenu] = useState<{ x: number; y: number; shift: Shift | null; day: string } | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [undoCountdown, setUndoCountdown] = useState(0);
+  const urlTouched = useRef(false);
   const [menuUsed, setMenuUsed] = useState(true);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuOpenerRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async () => {
     if (!company) return;
@@ -389,6 +417,7 @@ export default function SchedulePage() {
     event.preventDefault();
     event.stopPropagation();
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menuOpenerRef.current = event.currentTarget as HTMLElement;
     openMenuAt(event.clientX || rect.left + 8, event.clientY || rect.top + 8, shift, day);
   }
 
@@ -396,6 +425,7 @@ export default function SchedulePage() {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menuOpenerRef.current = event.currentTarget as HTMLElement;
     openMenuAt(rect.left + 8, rect.top + 8, shift);
   }
 
@@ -497,8 +527,15 @@ export default function SchedulePage() {
     if (!menu) return;
     const close = () => setMenu(null);
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") {
+        close();
+        menuOpenerRef.current?.focus();
+      }
     };
+    requestAnimationFrame(() => {
+      const first = menuRef.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])");
+      first?.focus();
+    });
     window.addEventListener("click", close);
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
@@ -510,6 +547,26 @@ export default function SchedulePage() {
       window.removeEventListener("keydown", escape);
     };
   }, [menu]);
+
+  function menuKeyDown(event: ReactKeyboardEvent) {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not([disabled])") || []);
+    if (!items.length) return;
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      items[(index + 1) % items.length].focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      items[(index - 1 + items.length) % items.length].focus();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setMenu(null);
+      menuOpenerRef.current?.focus();
+    }
+  }
 
   useEffect(() => {
     if (rangeView !== "day" && rangeView !== "week" && layout === "timeline") setLayout("board");
@@ -556,6 +613,7 @@ export default function SchedulePage() {
         onContextMenu={(event) => openMenu(event, shift)}
         onKeyDown={(event) => openMenuFromKeyboard(event, shift)}
         aria-haspopup="menu"
+        aria-expanded={!!menu && menu.shift?.id === shift.id}
         className="block w-full text-left"
       >
         <div className="flex items-center justify-between gap-1">
@@ -587,6 +645,7 @@ export default function SchedulePage() {
             onClick={(event) => openMenu(event, shift)}
             onContextMenu={(event) => openMenu(event, shift)}
             aria-haspopup="menu"
+            aria-expanded={!!menu && menu.shift?.id === shift.id}
             className="absolute right-1 top-1 rounded-md p-2 text-muted opacity-0 transition group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 hover:bg-[#eeeae0] hover:text-ink"
           >
             <MoreHorizontal className="size-4" />
@@ -644,9 +703,9 @@ export default function SchedulePage() {
               +{hidden} more · {t("schedule.viewDay")}
             </button>
           )}
-          {dayShifts.length === 0 && (
+          {dayShifts.length === 0 && isManager && (
             <button
-              onClick={() => isManager && openNew(day)}
+              onClick={() => openNew(day)}
               onContextMenu={(event) => openMenu(event, undefined, day)}
               className="w-full rounded-lg border border-dashed border-line py-6 text-[11px] text-muted/70 transition hover:border-line-strong hover:text-muted"
             >
@@ -764,7 +823,7 @@ export default function SchedulePage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center rounded-lg border border-line bg-surface p-0.5">
+          <div role="tablist" aria-label={t("schedule.rangeLabel")} className="flex items-center rounded-lg border border-line bg-surface p-0.5">
             {([
               ["day", "Day"],
               ["week", "Week"],
@@ -775,6 +834,9 @@ export default function SchedulePage() {
               <button
                 key={value}
                 data-testid={`schedule-view-${value}`}
+                role="tab"
+                aria-selected={rangeView === value}
+                tabIndex={rangeView === value ? 0 : -1}
                 onClick={() => {
                   setRangeView(value);
                   if (value === "day") setLayout("timeline");
@@ -793,12 +855,14 @@ export default function SchedulePage() {
             <div className="hidden items-center rounded-lg border border-line bg-surface p-0.5 lg:flex">
               <button
                 onClick={() => setLayout("board")}
+                aria-pressed={layout === "board"}
                 className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition", layout === "board" ? "bg-ink text-[#f4f1e8]" : "text-muted hover:text-ink")}
               >
                 <LayoutGrid className="size-3" /> Board
               </button>
               <button
                 onClick={() => setLayout("timeline")}
+                aria-pressed={layout === "timeline"}
                 className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition", layout === "timeline" ? "bg-ink text-[#f4f1e8]" : "text-muted hover:text-ink")}
               >
                 <CalendarRange className="size-3" /> Timeline
@@ -814,8 +878,9 @@ export default function SchedulePage() {
           {draftCount > 0 && <Badge tone="warning">{draftCount} draft</Badge>}
           {isManager && locations.length > 0 && (
             <div className="flex items-center gap-1.5">
-              <MapPin className="size-3.5 text-muted" />
+              <MapPin className="size-3.5 text-muted" aria-hidden />
               <Select
+                aria-label={t("schedule.locationFilter")}
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}
                 className="h-8 w-auto min-w-36 text-xs"
@@ -1010,7 +1075,7 @@ export default function SchedulePage() {
       <div className="space-y-4 lg:hidden">
         {(rangeView === "day" || rangeView === "week" ? byDay : byDay.filter((entry) => entry.shifts.length > 0)).map(({ day, shifts: dayShifts }) => (
           <section key={day} onContextMenu={(event) => openMenu(event, undefined, day)} className="panel overflow-hidden">
-            <div className="flex items-center justify-between border-b border-line bg-[#f7f4ec] px-4 py-2.5">
+            <div className="sticky-header flex items-center justify-between border-b border-line bg-[#f7f4ec] px-4 py-2.5">
               <p className={cn("text-xs font-semibold", day === today && "text-accent")}>
                 {weekdayShort(day)} · {monthDay(day)}
                 {day === today && <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[10px] uppercase text-white">{t("schedule.today")}</span>}
@@ -1070,11 +1135,14 @@ export default function SchedulePage() {
 
       {menu && (
         <div
+          ref={menuRef}
           role="menu"
           aria-label={t("schedule.shiftActions")}
+          tabIndex={-1}
           className="fixed z-50 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl"
           style={{ left: menu.x, top: menu.y }}
           onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => menuKeyDown(event)}
         >
           {menu.shift ? (
             <>

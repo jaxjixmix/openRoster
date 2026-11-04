@@ -130,7 +130,6 @@ async function main() {
     await page.getByTestId("schedule-view-week").click();
     await page.waitForTimeout(700);
 
-    const shiftCard = page.locator("[data-shift-id]").first();
     // color truth: rails follow departments, never hash-of-position
     const railMismatch = await page.evaluate(() => {
       const legend = new Set();
@@ -152,7 +151,21 @@ async function main() {
     assert.equal(railMismatch.offLegend, 0, `card rails use colors outside the department legend: ${JSON.stringify(railMismatch)}`);
     console.log("PASS department rail color truth");
 
-    await shiftCard.click({ button: "right" });
+    // URL state: switching views updates the URL and survives a reload
+    await page.getByTestId("schedule-view-month").click();
+    await page.waitForTimeout(700);
+    assert.match(page.url(), /view=month/);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByTestId("schedule-view-month").getAttribute("aria-selected"), "true", "month tab selected after reload");
+    assert.ok(await page.getByTestId("month-grid").isVisible(), "month grid restored from URL");
+    await page.getByTestId("schedule-view-week").click();
+    await page.getByRole("button", { name: /This week/ }).first().click();
+    await page.waitForTimeout(700);
+    console.log("PASS schedule url state");
+
+    const reloadCard = page.locator("[data-shift-id]").first();
+    await reloadCard.click({ button: "right" });
     await page.getByRole("menu").waitFor();
     assert.match(await page.getByRole("menu").innerText(), /Copy shift/);
     assert.match(await page.getByRole("menu").innerText(), /Repeat next week/);

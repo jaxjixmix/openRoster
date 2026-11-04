@@ -83,6 +83,9 @@ const EN: Record<string, string> = {
   "schedule.openShift": "Open",
   "schedule.andMore": "…and {count} more",
   "schedule.actionsHint": "Right-click a shift (or press Shift+F10) for actions",
+  "schedule.rangeLabel": "Schedule range",
+  "schedule.locationFilter": "Filter by location",
+  "schedule.noShifts": "No shifts",
 };
 
 
@@ -168,6 +171,9 @@ const ES: Record<string, string> = {
   "schedule.openShift": "Abierto",
   "schedule.andMore": "…y {count} más",
   "schedule.actionsHint": "Clic derecho en un turno (o Shift+F10) para acciones",
+  "schedule.rangeLabel": "Rango del horario",
+  "schedule.locationFilter": "Filtrar por ubicación",
+  "schedule.noShifts": "Sin turnos",
 };
 
 const CATALOGS: Record<Language, Record<string, string>> = { en: EN, es: ES };

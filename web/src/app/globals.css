@@ -127,3 +127,10 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Mobile schedule day headers stick under the app bar while scrolling a long week. */
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
