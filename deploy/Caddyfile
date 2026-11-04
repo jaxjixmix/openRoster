@@ -1,12 +1,26 @@
 # Replace these with your real hostnames and run Caddy in front of Docker Compose.
 # Build the web image with NEXT_PUBLIC_PB_URL=https://api.example.com
 
+(openroster_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+		# Next.js needs its own inline/runtime scripts; keep the CSP to framing/base/form.
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+}
+
 app.example.com {
+	import openroster_headers
 	encode zstd gzip
 	reverse_proxy web:3000
 }
 
 api.example.com {
+	import openroster_headers
 	encode zstd gzip
 	reverse_proxy pocketbase:8090
 }

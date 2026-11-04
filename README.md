@@ -126,6 +126,7 @@ The PocketBase dashboard is at http://localhost:8097/_/; keep it private.
 - **Backups:** `make backup`, then read [`docs/BACKUP.md`](docs/BACKUP.md). Restore is scripted and should be tested quarterly.
 - **Containers:** both images run as non-root; the web container has a healthcheck.
 - **Upgrades:** see [`docs/UPGRADE.md`](docs/UPGRADE.md).
+- **Releasing:** see [`docs/RELEASE.md`](docs/RELEASE.md) for the public-release checklist and branch-protection settings.
 - **i18n:** the interface ships in English and Spanish; pick the interface language per company in Settings → UI language. Date/number/currency formats follow Locale; server-generated emails stay English-only in the alpha.
 - **Configuration:** copy [`.env.example`](.env.example) values into your shell or compose file; `make dev-web` already passes `NEXT_PUBLIC_PB_URL` from `PB_PORT`.
 - **Retention:** see [`docs/RETENTION.md`](docs/RETENTION.md); `make retention` dry-runs, `make retention-apply` deletes.

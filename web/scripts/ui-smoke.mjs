@@ -356,6 +356,8 @@ async function main() {
     console.log("PASS employee self-service");
 
     await page.evaluate(() => localStorage.removeItem("openroster.offline-punches.v1"));
+    await page.context().grantPermissions(["geolocation"], { origin: WEB_URL });
+    await page.context().setGeolocation({ latitude: 37.7955, longitude: -122.3937 });
     await page.goto(`${WEB_URL}/timeclock`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Clock in" }).waitFor({ timeout: 10000 });
     await page.context().setOffline(true);

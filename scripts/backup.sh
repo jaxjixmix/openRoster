@@ -12,5 +12,6 @@ fi
 
 mkdir -p "$DEST"
 tar -czf "$DEST/openroster-$STAMP.tar.gz" -C "$ROOT/pb" pb_data
-echo "Backup written to $DEST/openroster-$STAMP.tar.gz"
+chmod 600 "$DEST/openroster-$STAMP.tar.gz"
+echo "Backup written to $DEST/openroster-$STAMP.tar.gz (mode 600)"
 echo "For a guaranteed-consistent hot backup, use PocketBase's built-in backup dashboard instead."
