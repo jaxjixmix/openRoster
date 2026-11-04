@@ -254,6 +254,16 @@ export async function getPositions(): Promise<Position[]> {
   return pb.collection("positions").getFullList<Position>({ sort: "name" });
 }
 
+export async function getForecast(weekStart: string, location?: string): Promise<Record<string, unknown> | null> {
+  const filters = [`week_start = "${weekStart}"`];
+  if (location) filters.push(`location = "${location}"`);
+  else filters.push('location = ""');
+  const rows = await pb.collection("demand_forecasts").getFullList<Record<string, unknown>>({
+    filter: filters.join(" && "),
+  });
+  return rows[0] || null;
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;

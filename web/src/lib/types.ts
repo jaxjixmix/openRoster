@@ -159,6 +159,15 @@ export interface Shift extends BaseRecord {
   };
 }
 
+export interface DemandForecast extends BaseRecord {
+  company: string;
+  location?: string;
+  week_start: string;
+  days?: Record<string, number>;
+  productivity?: number;
+  break_minutes?: number;
+}
+
 export interface Punch extends BaseRecord {
   employee: string;
   location?: string;

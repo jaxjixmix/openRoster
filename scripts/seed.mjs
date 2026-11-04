@@ -383,6 +383,24 @@ async function main() {
     });
   }
 
+  await create("demand_forecasts", {
+    company: company.id,
+    location: "",
+    week_start: addDays(TODAY, 7),
+    days: {
+      [addDays(TODAY, 7)]: 120,
+      [addDays(TODAY, 8)]: 110,
+      [addDays(TODAY, 9)]: 80,
+      [addDays(TODAY, 10)]: 70,
+      [addDays(TODAY, 11)]: 130,
+      [addDays(TODAY, 12)]: 190,
+      [addDays(TODAY, 13)]: 170,
+    },
+    productivity: 16,
+    break_minutes: 30,
+  });
+  console.log("Demand forecast seeded for next week");
+
   console.log("\nDone. Sign in with:");
   console.log("  admin   maya@harborhearth.co / OpenRoster123!");
   console.log("  manager jordan@harborhearth.co / OpenRoster123!");

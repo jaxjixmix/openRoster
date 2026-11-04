@@ -1189,6 +1189,180 @@ routerAdd("POST", "/api/openroster/setup", (e) => {
   })
 })
 
+// ------------------------------------------------------------------ demand forecasting
+// POST /api/openroster/demand/recommend
+// body: { week_start, covers: { "YYYY-MM-DD": number } | 7-array, productivity? }
+// productivity = covers one person can serve in a standard 8h shift.
+// Returns headcount/hour recommendations with an explanation. Never creates shifts.
+routerAdd("POST", "/api/openroster/demand/recommend", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  const weekStart = body.week_start
+  if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return h.bad(e, "week_start must be YYYY-MM-DD.")
+  const company = h.companyOf(e.app, e.auth)
+  if (!company) return h.bad(e, "Company not configured.", 404)
+
+  let covers = body.covers
+  if (Array.isArray(covers)) {
+    if (covers.length !== 7) return h.bad(e, "covers needs 7 numbers, one per day.")
+    const byDate = {}
+    covers.forEach((value, index) => { byDate[h.addDays(weekStart, index)] = value })
+    covers = byDate
+  }
+  if (!covers || typeof covers !== "object") return h.bad(e, "covers is required: 7 numbers by day.")
+
+  const productivity = Math.max(1, Number(body.productivity) || 16)
+  const shiftHours = 8
+  const maxHours = company.getFloat("overtime_weekly_hours") || 40
+  const budget = company.getFloat("weekly_labor_budget") || 0
+  const employees = e.app.findRecordsByFilter(
+    "employees",
+    "company = {:company} && status = 'active' && pay_type != 'salary'",
+    "first_name",
+    500,
+    0,
+    { company: company.id }
+  )
+  const averageRate = employees.length
+    ? employees.reduce((sum, emp) => sum + (emp.getFloat("pay_rate") || 0), 0) / employees.length
+    : 0
+
+  const days = []
+  let weekHours = 0
+  let weekCost = 0
+  let weekHeadcount = 0
+  for (let day = 0; day < 7; day++) {
+    const date = h.addDays(weekStart, day)
+    const value = Number(covers[date])
+    if (!value || value <= 0) { days.push({ date: date, covers: 0, headcount: 0, hours: 0, cost: 0, explanation: "" }); continue }
+    const people = Math.ceil(value / productivity)
+    const hours = people * shiftHours
+    const cost = Math.round(hours * averageRate * 100) / 100
+    weekHeadcount += people
+    weekHours = Math.round((weekHours + hours) * 100) / 100
+    weekCost = Math.round((weekCost + cost) * 100) / 100
+    days.push({
+      date: date,
+      covers: Math.round(value * 10) / 10,
+      headcount: people,
+      hours: hours,
+      cost: cost,
+      explanation: Math.round(value * 10) / 10 + " covers / " + productivity + " covers per person → " + people +
+        (people === 1 ? " person" : " people") + " × " + shiftHours + "h. Budget " + budget,
+    })
+  }
+
+  return e.json(200, {
+    week_start: weekStart,
+    productivity: productivity,
+    days: days,
+    week_headcount: weekHeadcount,
+    week_hours: weekHours,
+    week_cost: weekCost,
+    budget: budget,
+    over_budget: budget > 0 && weekCost > budget,
+    average_rate: Math.round(averageRate * 100) / 100,
+  })
+}, $apis.requireAuth())
+
+// POST /api/openroster/demand/apply
+// body: { week_start, location?, covers, productivity?, note? }
+// Creates DRAFT shifts (8h, 09:00 local) sized from the covers values. Never publishes.
+// Days that already carry forecast shifts for this week are skipped unless replace=true.
+routerAdd("POST", "/api/openroster/demand/apply", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  const weekStart = body.week_start
+  if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return h.bad(e, "week_start must be YYYY-MM-DD.")
+  const company = h.companyOf(e.app, e.auth)
+  if (!company) return h.bad(e, "Company not configured.", 404)
+
+  let covers = body.covers
+  if (Array.isArray(covers)) {
+    if (covers.length !== 7) return h.bad(e, "covers needs 7 numbers, one per day.")
+    const byDate = {}
+    covers.forEach((value, index) => { byDate[h.addDays(weekStart, index)] = value })
+    covers = byDate
+  }
+  if (!covers || typeof covers !== "object") return h.bad(e, "covers is required: 7 numbers by day.")
+
+  const productivity = Math.max(1, Number(body.productivity) || 16)
+  const note = "forecast:" + weekStart
+  const offsets = Array.isArray(body.offsets) ? body.offsets : [-420, -420, -420, -420, -420, -420, -420]
+  const offsetFor = (dayIndex) => Number(offsets[dayIndex] || 0)
+  if (body.location) {
+    try { e.app.findRecordById("locations", body.location) } catch (err) {
+      return h.bad(e, "Unknown location.", 422)
+    }
+  }
+
+  const weekEnd = h.addDays(weekStart, 7)
+  let existing = []
+  try {
+    existing = e.app.findRecordsByFilter(
+      "shifts",
+      "company = {:company} && local_date >= {:start} && local_date < {:end} && notes = {:note}",
+      "",
+      1,
+      0,
+      { company: company.id, start: weekStart + " 00:00:00.000Z", end: weekEnd + " 00:00:00.000Z", note: note }
+    )
+  } catch (err) {}
+  if (existing.length && !body.replace) {
+    return e.json(200, { created: 0, replaced: false, skipped_reason: "already_forecasted" })
+  }
+  if (existing.length && body.replace) {
+    e.app.runInTransaction((txApp) => {
+      existing.forEach((row) => { txApp.delete(row) })
+      const everything = txApp.findRecordsByFilter(
+        "shifts",
+        "company = {:company} && local_date >= {:start} && local_date < {:end} && notes = {:note}",
+        "",
+        1000,
+        0,
+        { company: company.id, start: weekStart + " 00:00:00.000Z", end: weekEnd + " 00:00:00.000Z", note: note }
+      )
+      everything.forEach((row) => { txApp.delete(row) })
+    })
+  }
+
+  let created = 0
+  const createdIds = []
+  e.app.runInTransaction((txApp) => {
+    for (let day = 0; day < 7; day++) {
+      const date = h.addDays(weekStart, day)
+      const value = Number(covers[date])
+      if (!value || value <= 0) continue
+      const people = Math.ceil(value / productivity)
+      // one 8h shift per needed person; break minutes ride on the shift, never the math
+      for (let personIndex = 0; personIndex < people; personIndex++) {
+        const offset = offsetFor(day)
+        const shift = new Record(txApp.findCollectionByNameOrId("shifts"))
+        shift.set("company", company.id)
+        if (body.location) shift.set("location", body.location)
+        shift.set("starts_at", new Date(Date.parse(date + "T09:00:00Z") - offset * 60000).toISOString())
+        shift.set("ends_at", new Date(Date.parse(date + "T17:00:00Z") - offset * 60000).toISOString())
+        shift.set("local_date", date + " 00:00:00.000Z")
+        shift.set("local_start", "09:00")
+        shift.set("local_end", "17:00")
+        shift.set("break_minutes", 30)
+        shift.set("status", "draft")
+        shift.set("source", "manual")
+        shift.set("notes", note)
+        shift.set("created_by", e.auth.id)
+        txApp.save(shift)
+        createdIds.push(shift.id)
+        created++
+      }
+    }
+  })
+
+  h.audit(e.app, e.auth, "shifts", "", "schedule", "Forecast applied for week " + weekStart + " (" + created + " draft shifts)")
+  return e.json(200, { created: created, replaced: !!body.replace, note: note })
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ validation
 onRecordCreateRequest((e) => {
   const h = require(`${__hooks}/lib.js`)

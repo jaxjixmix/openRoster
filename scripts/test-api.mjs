@@ -427,6 +427,57 @@ async function main() {
     assert.equal(offlineOut.status, 200, "offline clock out");
     console.log("PASS offline punch idempotency");
 
+    const weekStartStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const recommend = await request("/api/openroster/demand/recommend", {
+      method: "POST",
+      token,
+      body: { week_start: weekStartStr, covers: Array(7).fill(0).map((_, index) => (index === 2 ? 50 : 0)), productivity: 16 },
+    });
+    assert.equal(recommend.status, 200);
+    assert.equal(recommend.data.days[2].headcount, 4);
+    assert.equal(recommend.data.days[2].hours, 32);
+    assert.match(recommend.data.days[2].explanation, /50 covers/);
+    const recommendUnauth = await request("/api/openroster/demand/recommend", { method: "POST", body: { week_start: weekStartStr, covers: [1,1,1,1,1,1,1] } });
+    assert.equal(recommendUnauth.status, 401);
+    const recommendBadWeek = await request("/api/openroster/demand/recommend", { method: "POST", token, body: { week_start: "nope", covers: [1,1,1,1,1,1,1] } });
+    assert.equal(recommendBadWeek.status, 400);
+
+    const demandSet = await request("/api/collections/demand_forecasts/records", {
+      method: "POST",
+      token,
+      body: { company: bootstrap.data.company.id, week_start: weekStartStr, location: "", days: { [weekStartStr]: 50 }, productivity: 16, break_minutes: 30 },
+    });
+    assert.equal(demandSet.status, 200, JSON.stringify(demandSet.data));
+
+    const demandPlan = await request("/api/openroster/demand/apply", {
+      method: "POST",
+      token,
+      body: { week_start: weekStartStr, covers: Array(7).fill(0).map((_, index) => (index === 2 ? 50 : 0)), productivity: 16, offsets: [-480,-480,-480,-480,-480,-480,-480] },
+    });
+    assert.equal(demandPlan.status, 200);
+    assert.equal(demandPlan.data.created, 4);
+    const appliedAgain = await request("/api/openroster/demand/apply", {
+      method: "POST",
+      token,
+      body: { week_start: weekStartStr, covers: Array(7).fill(0).map((_, index) => (index === 2 ? 50 : 0)), productivity: 16 },
+    });
+    assert.equal(appliedAgain.status, 200);
+    assert.equal(appliedAgain.data.created, 0);
+    const appliedReplace = await request("/api/openroster/demand/apply", {
+      method: "POST",
+      token,
+      body: { week_start: weekStartStr, covers: Array(7).fill(0).map((_, index) => (index === 2 ? 34 : 0)), productivity: 16, replace: true },
+    });
+    assert.equal(appliedReplace.data.replaced, true);
+    assert.equal(appliedReplace.data.created, 3);
+    const forecastShifts = await request(
+      `/api/collections/shifts/records?perPage=10&sort=-created&filter=${encodeURIComponent(`starts_at >= "${weekStartStr}" && starts_at < "${weekStartStr.slice(0,8)}15" && notes = "${appliedReplace.data.note}"`)}`,
+      { token }
+    );
+    assert.ok(forecastShifts.data.items.length > 0, "forecast shifts exist");
+    assert.ok(forecastShifts.data.items.every((shift) => shift.status === "draft"));
+    console.log("PASS demand forecast and apply");
+
     await request("/api/collections/kiosk_pins/records", {
       method: "POST",
       token,

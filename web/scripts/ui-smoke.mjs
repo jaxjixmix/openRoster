@@ -224,6 +224,25 @@ async function main() {
     assert.match(await page.locator("main").innerText(), /Labor by location/i);
     console.log("PASS richer reports");
 
+    await page.goto(`${WEB_URL}/forecast`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    assert.equal(await page.locator("h1").first().innerText(), "Demand forecast");
+    const nextWeek = await page.evaluate(() => {
+      const d = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      return d;
+    });
+    await page.locator('input[type="date"]').first().fill(nextWeek);
+    await page.waitForTimeout(500);
+    const coversInput = page.locator('input[type="number"][placeholder="Covers"]').first();
+    await coversInput.fill("80");
+    await page.getByRole("button", { name: "Recommend" }).click();
+    await page.getByText("Why this coverage").waitFor({ timeout: 10000 });
+    assert.match(await page.locator("main").innerText(), /people/);
+    await page.getByRole("button", { name: "Create draft shifts" }).click();
+    await page.waitForTimeout(800);
+    assert.match(await page.locator(".fixed.bottom-5").innerText(), /draft shifts/);
+    console.log("PASS demand forecast");
+
     await page.goto(`${WEB_URL}/templates`, { waitUntil: "networkidle" });
     await page.waitForTimeout(700);
     assert.equal(await page.locator("h1").first().innerText(), "Shift templates");

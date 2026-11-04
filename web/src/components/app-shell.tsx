@@ -39,6 +39,7 @@ const NAV = [
   { href: "/me", label: "My profile", icon: CircleUserRound, manager: false },
   { href: "/people", label: "People", icon: Users, manager: true },
   { href: "/templates", label: "Shift templates", icon: CalendarClock, manager: true },
+  { href: "/forecast", label: "Demand forecast", icon: CalendarClock, manager: true },
   { href: "/payroll", label: "Payroll", icon: Wallet, manager: true },
   { href: "/reports", label: "Reports", icon: BarChart3, manager: true },
   { href: "/settings", label: "Settings", icon: Settings, manager: true },
