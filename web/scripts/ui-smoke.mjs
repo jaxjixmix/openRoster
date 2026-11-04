@@ -131,6 +131,27 @@ async function main() {
     await page.waitForTimeout(700);
 
     const shiftCard = page.locator("[data-shift-id]").first();
+    // color truth: rails follow departments, never hash-of-position
+    const railMismatch = await page.evaluate(() => {
+      const legend = new Set();
+      document.querySelectorAll("[data-department-dot]").forEach((dot) => {
+        legend.add(getComputedStyle(dot).backgroundColor);
+      });
+      const cardColors = new Set();
+      document.querySelectorAll("[data-shift-id]").forEach((card) => {
+        const style = getComputedStyle(card);
+        if (style.borderLeftWidth === "3px" && card.offsetParent !== null) {
+          cardColors.add(style.borderLeftColor);
+        }
+      });
+      const offLegend = [...cardColors].filter(
+        (color) => !legend.has(color) && color !== "rgb(216, 210, 194)",
+      );
+      return { total: cardColors.size, offLegend: offLegend.length };
+    });
+    assert.equal(railMismatch.offLegend, 0, `card rails use colors outside the department legend: ${JSON.stringify(railMismatch)}`);
+    console.log("PASS department rail color truth");
+
     await shiftCard.click({ button: "right" });
     await page.getByRole("menu").waitFor();
     assert.match(await page.getByRole("menu").innerText(), /Copy shift/);

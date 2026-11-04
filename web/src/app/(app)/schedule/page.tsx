@@ -508,7 +508,7 @@ export default function SchedulePage() {
           "w-full rounded-lg border border-line bg-raised p-2 text-left transition hover:border-line-strong hover:shadow-sm",
           open && "border-dashed bg-[#fdf7f2]",
         )}
-        style={{ borderLeft: `3px solid ${color}` }}
+        style={{ borderLeft: `3px solid ${open ? "#d8d2c2" : color}` }}
       >
         <div className="flex items-center justify-between gap-1">
           <span className="font-mono text-[11px] leading-none tabular text-ink">{startLabel}–{endLabel}</span>
@@ -878,8 +878,8 @@ export default function SchedulePage() {
                         left: `calc(${lane * width}% + 3px)`,
                         width: `calc(${width}% - 6px)`,
                         backgroundColor: open ? "#fbf3ee" : `${color}1a`,
-                        borderLeftColor: color,
-                        ...(open ? { borderColor: `${color}66`, borderLeftColor: color } : {}),
+                        borderLeftColor: open ? "#d8d2c2" : color,
+                        ...(open ? { borderColor: "#e2dccd" } : {}),
                       }}
                       title={`${formatTime(shift.starts_at, tz)} – ${formatTime(shift.ends_at, tz)} · ${shift.expand?.employee ? fullName(shift.expand.employee) : "Open"} · Right-click for actions`}
                     >
@@ -968,10 +968,10 @@ export default function SchedulePage() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl border border-line bg-surface px-4 py-2.5">
-        <span className="text-[10px] uppercase tracking-[0.12em] text-muted">Teams</span>
+        <span className="text-[10px] uppercase tracking-[0.12em] text-muted">{t("schedule.legendTitle")}</span>
         {departments.map((d) => (
           <span key={d.id} className="inline-flex items-center gap-1.5 text-[11px] text-muted">
-            <span className="size-2 rounded-full" style={{ backgroundColor: d.color || "#C4552D" }} />
+            <span data-department-dot className="size-2 rounded-full" style={{ backgroundColor: d.color || "#C4552D" }} />
             {d.name}
           </span>
         ))}

@@ -10,13 +10,9 @@ import { Avatar, Badge } from "@/components/ui";
 
 const FALLBACK_COLORS = ["#C4552D", "#3F6B57", "#7B5C9E", "#A97B2F", "#3D6B8A"];
 
+// color truth: the rail follows the department so the Teams legend and the cards always agree.
+// No per-position hashing — two positions must never collide into one color by accident.
 export function shiftColor(shift: Shift): string {
-  if (shift.expand?.position) {
-    const name = shift.expand.position.name;
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-    return FALLBACK_COLORS[Math.abs(hash) % FALLBACK_COLORS.length];
-  }
   return shift.expand?.department?.color || FALLBACK_COLORS[0];
 }
 
