@@ -22,6 +22,14 @@ Demo workspace, 1440px desktop unless noted.
 | **People** | **Month schedule** |
 | ![People](docs/screenshots/people.png) | ![Month schedule](docs/screenshots/schedule-month.png) |
 
+### Kiosk flow
+
+| Pair the tablet | Pick a name |
+| --- | --- |
+| ![Kiosk pairing](docs/screenshots/kiosk-pairing.png) | ![Kiosk roster](docs/screenshots/kiosk.png) |
+| **Choose an action** | **PIN entry and confirmation** |
+| ![Kiosk actions](docs/screenshots/kiosk-actions.png) | ![Kiosk PIN](docs/screenshots/kiosk-pin.png) |
+
 ## Why this exists
 
 [TimeTrex](https://github.com/timetrex/TimeTrex) has deep payroll and time & attendance, but it is an AGPL PHP/Zend Framework monolith. [Staffjoy](https://github.com/Staffjoy/v2) had a clean scheduling model, but its v2 stack (Go + Bazel + Kubernetes) is deprecated and V1 is a Python microservice constellation.
