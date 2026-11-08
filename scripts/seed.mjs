@@ -334,6 +334,14 @@ async function main() {
   });
   token = manager.token;
 
+  // Demo employees share kiosk PIN 1234; set individually via the manager route.
+  for (const person of Object.values(employees)) {
+    await api("/api/openroster/kiosk/employee-pin", {
+      method: "POST",
+      body: JSON.stringify({ employee: person.id, pin: "1234" }),
+    });
+  }
+
   const periodFrom = addDays(WEEK_START, -7);
   const periodTo = addDays(WEEK_START, 90);
   await api("/api/openroster/pay_periods/generate", {

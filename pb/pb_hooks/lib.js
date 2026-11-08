@@ -69,6 +69,56 @@ function overlaps(startA, endA, startB, endB) {
   return startA < endB && endA > startB
 }
 
+function kioskTokenFromRequest(e) {
+  const info = e.requestInfo()
+  const headers = (info && info.headers) || {}
+  return String(headers["x_kiosk_token"] || headers["x-kiosk-token"] || headers["X-Kiosk-Token"] || "")
+}
+
+function kioskDeviceForToken(app, token) {
+  if (!token) return null
+  try {
+    return app.findFirstRecordByFilter(
+      "kiosk_devices",
+      "token_hash = {:hash} && active = true",
+      { hash: $security.sha256(String(token)) }
+    )
+  } catch (err) {
+    return null
+  }
+}
+
+function kioskDeviceView(device, location) {
+  return {
+    id: device.id,
+    name: device.getString("name"),
+    location: device.getString("location"),
+    location_name: location ? location.getString("name") : "",
+    active: device.getBool("active"),
+    last_seen: device.getString("last_seen"),
+  }
+}
+
+function kioskContext(e) {
+  const token = kioskTokenFromRequest(e)
+  const device = kioskDeviceForToken(e.app, token)
+  if (!device) return { error: bad(e, "Kiosk is not paired. Ask a manager for a new code.", 401) }
+  let company = null
+  let location = null
+  try { company = e.app.findRecordById("companies", device.getString("company")) } catch (err) {}
+  try { location = e.app.findRecordById("locations", device.getString("location")) } catch (err) {}
+  if (!company || !location) return { error: bad(e, "Kiosk configuration is incomplete.", 409) }
+  device.set("last_seen", new Date().toISOString())
+  e.app.save(device)
+  return { device: device, company: company, location: location }
+}
+
+function kioskPinMatches(employee, pin) {
+  const hash = employee.getString("kiosk_pin_hash")
+  if (!hash) return false
+  return hash === $security.sha256(String(pin || ""))
+}
+
 function shiftDate(record) {
   const local = record.getString("local_date")
   return local ? String(local).slice(0, 10) : String(record.getString("starts_at")).slice(0, 10)
@@ -809,6 +859,11 @@ module.exports = {
   approvedTimeOff: approvedTimeOff,
   overlaps: overlaps,
   shiftDate: shiftDate,
+  kioskTokenFromRequest: kioskTokenFromRequest,
+  kioskDeviceForToken: kioskDeviceForToken,
+  kioskPinMatches: kioskPinMatches,
+  kioskDeviceView: kioskDeviceView,
+  kioskContext: kioskContext,
   certificationError: certificationError,
   shiftAssignmentError: shiftAssignmentError,
   weekStartDate: weekStartDate,

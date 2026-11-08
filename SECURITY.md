@@ -9,8 +9,8 @@ snapshots and may not receive backports.
 
 | Version | Supported |
 | --- | --- |
-| `0.10.x-alpha` | Yes |
-| `< 0.10.0-alpha` | No |
+| `0.11.x-alpha` | Yes |
+| `< 0.11.0-alpha` | No |
 
 ## Reporting a vulnerability
 

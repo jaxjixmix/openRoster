@@ -561,8 +561,9 @@ async function main() {
     });
     assert.equal(appliedReplace.data.replaced, true);
     assert.equal(appliedReplace.data.created, 3);
+    const forecastEnd = new Date(Date.parse(weekStartStr + "T00:00:00Z") + 7 * 86400000).toISOString().slice(0, 10);
     const forecastShifts = await request(
-      `/api/collections/shifts/records?perPage=10&sort=-created&filter=${encodeURIComponent(`starts_at >= "${weekStartStr}" && starts_at < "${weekStartStr.slice(0,8)}15" && notes = "${appliedReplace.data.note}"`)}`,
+      `/api/collections/shifts/records?perPage=10&sort=-created&filter=${encodeURIComponent(`starts_at >= "${weekStartStr}" && starts_at < "${forecastEnd}" && notes = "${appliedReplace.data.note}"`)}`,
       { token }
     );
     assert.ok(forecastShifts.data.items.length > 0, "forecast shifts exist");
@@ -579,6 +580,96 @@ async function main() {
     const samPins = await request("/api/collections/kiosk_pins/records?perPage=10", { token: samLogin.data.token });
     assert.equal(samPins.data.items.length, 0, "employees cannot read kiosk PIN");
     console.log("PASS kiosk PIN access");
+
+    const kioskDevice = await request("/api/openroster/kiosk/devices", {
+      method: "POST",
+      token,
+      body: { name: "API test kiosk", location: sam.location },
+    });
+    assert.equal(kioskDevice.status, 201, JSON.stringify(kioskDevice.data));
+    assert.match(kioskDevice.data.code, /^\d{6}$/);
+    const paired = await request("/api/openroster/kiosk/pair", {
+      method: "POST",
+      body: { code: kioskDevice.data.code },
+    });
+    assert.equal(paired.status, 200, JSON.stringify(paired.data));
+    const kioskHeaders = { "X-Kiosk-Token": paired.data.token };
+    const roster = await request("/api/openroster/kiosk/roster", { headers: kioskHeaders });
+    assert.equal(roster.status, 200, JSON.stringify(roster.data));
+    const samRoster = roster.data.employees.find((employee) => employee.id === sam.id);
+    assert.ok(samRoster, "kiosk roster includes Sam");
+    assert.equal(samRoster.has_pin, true);
+    const kioskType = samRoster.clocked_in ? "out" : "in";
+    const wrongPin = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: { employee: sam.id, type: kioskType, pin: "0000" },
+    });
+    assert.equal(wrongPin.status, 401, "wrong kiosk PIN rejected");
+    const kioskPunch = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: { employee: sam.id, type: kioskType, pin: "1234" },
+    });
+    assert.equal(kioskPunch.status, 200, JSON.stringify(kioskPunch.data));
+    assert.equal(kioskPunch.data.punch.kiosk_device, kioskDevice.data.device.id);
+    const reverseKiosk = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: { employee: sam.id, type: kioskType === "in" ? "out" : "in", pin: "1234" },
+    });
+    assert.equal(reverseKiosk.status, 200, "kiosk can reverse the punch for cleanup");
+    const offlineKioskId = `kiosk-offline-${Date.now()}`;
+    const offlineKiosk = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: {
+        employee: sam.id,
+        type: "in",
+        offline: true,
+        client_id: offlineKioskId,
+        punched_at: new Date(Date.now() + 30000).toISOString(),
+      },
+    });
+    assert.equal(offlineKiosk.status, 200, "kiosk offline punch accepted");
+    assert.match(offlineKiosk.data.punch.note, /PIN not verified/);
+    const duplicateKiosk = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: {
+        employee: sam.id,
+        type: "in",
+        offline: true,
+        client_id: offlineKioskId,
+        punched_at: new Date(Date.now() + 30000).toISOString(),
+      },
+    });
+    assert.equal(duplicateKiosk.status, 200);
+    assert.equal(duplicateKiosk.data.duplicate, true);
+    const offlineKioskOut = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: {
+        employee: sam.id,
+        type: "out",
+        offline: true,
+        client_id: `${offlineKioskId}-out`,
+        punched_at: new Date(Date.now() + 31000).toISOString(),
+      },
+    });
+    assert.equal(offlineKioskOut.status, 200, "kiosk offline clock out accepted");
+
+    const devices = await request("/api/openroster/kiosk/devices", { token });
+    assert.ok(devices.data.items.some((device) => device.id === kioskDevice.data.device.id));
+    const revoked = await request("/api/openroster/kiosk/devices/revoke", {
+      method: "POST",
+      token,
+      body: { device: kioskDevice.data.device.id },
+    });
+    assert.equal(revoked.status, 200);
+    const revokedRoster = await request("/api/openroster/kiosk/roster", { headers: kioskHeaders });
+    assert.equal(revokedRoster.status, 401, "revoked device loses access");
+    console.log("PASS kiosk pairing, PIN punch and revoke");
 
     const cert = await request("/api/collections/certifications/records", {
       method: "POST",

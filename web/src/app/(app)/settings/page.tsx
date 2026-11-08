@@ -23,13 +23,16 @@ import {
   getCertifications,
   getDepartments,
   getHolidays,
+  getKioskDevices,
   getKioskPin,
   getLocations,
+  createKioskDevice,
+  revokeKioskDevice,
   getPayRules,
   getPositions,
   saveKioskPin,
 } from "@/lib/data";
-import type { Certification, Department, Holiday, Location, PayRule, Position, User } from "@/lib/types";
+import type { Certification, Department, Holiday, KioskDevice, Location, PayRule, Position, User } from "@/lib/types";
 import { formatDate, toDate } from "@/lib/dates";
 import { roleLabel, titleCase } from "@/lib/format";
 import { downloadCsv } from "@/lib/csv";
@@ -90,6 +93,11 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [kioskPin, setKioskPin] = useState("");
   const [kioskSaving, setKioskSaving] = useState(false);
+  const [kioskDevices, setKioskDevices] = useState<KioskDevice[]>([]);
+  const [kioskDeviceName, setKioskDeviceName] = useState("Front desk tablet");
+  const [kioskDeviceLocation, setKioskDeviceLocation] = useState("");
+  const [kioskPairing, setKioskPairing] = useState<{ code: string; expires_at: string; name: string } | null>(null);
+  const [kioskPairBusy, setKioskPairBusy] = useState(false);
 
   const [locationModal, setLocationModal] = useState<Location | "new" | null>(null);
   const [departmentModal, setDepartmentModal] = useState<Department | "new" | null>(null);
@@ -111,11 +119,14 @@ export default function SettingsPage() {
         getHolidays(),
       ]);
       setLocations(locs);
+      setKioskDeviceLocation((current) => current || locs[0]?.id || "");
       setDepartments(depts);
       setPositions(pos);
       setCertifications(certs);
       setPayRules(rules);
       setHolidays(hols);
+
+      getKioskDevices().then(setKioskDevices).catch(() => {});
 
       if (isAdmin) {
         const [us, audit] = await Promise.all([
@@ -183,6 +194,35 @@ export default function SettingsPage() {
       toast(errorMessage(err), "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function pairKiosk() {
+    if (!kioskDeviceLocation) {
+      toast("Choose a location for the tablet.", "error");
+      return;
+    }
+    setKioskPairBusy(true);
+    try {
+      const result = await createKioskDevice(kioskDeviceName.trim() || "Kiosk tablet", kioskDeviceLocation);
+      setKioskPairing({ code: result.code, expires_at: result.expires_at, name: result.device.name });
+      setKioskDevices((items) => [result.device, ...items]);
+      toast("Pairing code ready. It expires in 10 minutes.");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    } finally {
+      setKioskPairBusy(false);
+    }
+  }
+
+  async function revokeDevice(device: KioskDevice) {
+    if (!window.confirm(`Revoke ${device.name}? Its punches stop immediately.`)) return;
+    try {
+      await revokeKioskDevice(device.id);
+      setKioskDevices((items) => items.filter((item) => item.id !== device.id));
+      toast("Kiosk revoked.", "info");
+    } catch (err) {
+      toast(errorMessage(err), "error");
     }
   }
 
@@ -361,12 +401,56 @@ export default function SettingsPage() {
               </p>
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="w-full max-w-xs">
-                  <Label>Kiosk PIN</Label>
+                  <Label>Manager override PIN</Label>
                   <Input value={kioskPin} onChange={(e) => setKioskPin(e.target.value)} placeholder="4–12 characters" maxLength={12} />
                 </div>
                 <Button variant="outline" onClick={saveKiosk} loading={kioskSaving}>
                   {kioskPin.trim() ? "Save PIN" : "Remove PIN"}
                 </Button>
+              </div>
+
+              <div className="mt-5 border-t border-line pt-4">
+                <p className="text-sm font-semibold">Paired tablets</p>
+                <p className="mt-0.5 text-[11px] text-muted">
+                  Each tablet gets its own clock-only token. Pairing codes expire in 10 minutes.
+                </p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <div className="w-full max-w-xs">
+                    <Label>Tablet name</Label>
+                    <Input value={kioskDeviceName} onChange={(e) => setKioskDeviceName(e.target.value)} placeholder="Front desk tablet" />
+                  </div>
+                  <div className="w-full max-w-xs">
+                    <Label>Location</Label>
+                    <Select value={kioskDeviceLocation} onChange={(e) => setKioskDeviceLocation(e.target.value)}>
+                      <option value="">Choose a location</option>
+                      {locations.map((location) => (
+                        <option key={location.id} value={location.id}>{location.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Button variant="outline" onClick={pairKiosk} loading={kioskPairBusy}>Pair tablet</Button>
+                </div>
+                {kioskPairing && (
+                  <div className="mt-3 rounded-xl border border-[#d9c8b4] bg-[#fbf6ec] p-4">
+                    <p className="eyebrow">Pairing code for {kioskPairing.name}</p>
+                    <p className="mt-1 font-mono text-3xl font-semibold tracking-[0.25em]">{kioskPairing.code}</p>
+                    <p className="mt-1 text-[11px] text-muted">Enter it at /kiosk on the tablet. Expires {new Date(kioskPairing.expires_at).toLocaleTimeString(company.locale || "en-US", { hour: "numeric", minute: "2-digit" })}.</p>
+                  </div>
+                )}
+                <div className="mt-3 divide-y divide-line rounded-xl border border-line">
+                  {kioskDevices.map((device) => (
+                    <div key={device.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                      <div>
+                        <p className="text-xs font-medium">{device.name}</p>
+                        <p className="text-[10px] text-muted">
+                          {device.location_name || "Location"} · {device.last_seen ? `last seen ${new Date(device.last_seen).toLocaleString(company.locale || "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "never paired"}
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => void revokeDevice(device)}>Revoke</Button>
+                    </div>
+                  ))}
+                  {kioskDevices.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted">No tablets paired yet.</p>}
+                </div>
               </div>
             </section>
           </div>

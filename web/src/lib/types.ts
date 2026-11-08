@@ -251,6 +251,15 @@ export interface BlackoutDate extends BaseRecord {
   active?: boolean;
 }
 
+export interface KioskDevice extends BaseRecord {
+  company: string;
+  location: string;
+  name: string;
+  active: boolean;
+  last_seen?: string;
+  location_name?: string;
+}
+
 export interface KioskPin extends BaseRecord {
   company: string;
   pin: string;

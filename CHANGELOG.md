@@ -4,6 +4,19 @@ All notable changes to OpenRoster are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-1.0 prerelease versions while the payroll boundary remains alpha.
 
+## [0.11.0-alpha] — 2026-11-09
+
+### Added
+- Standalone `/kiosk` PWA for paired tablets: pairing codes, device tokens, location-scoped roster, employee PIN keypad, large touch targets, idle reset, wake lock and fullscreen.
+- Manager Settings pairing/revocation list with last-seen timestamps.
+- Hashed employee kiosk PINs set in the person editor.
+- Kiosk offline queue with idempotent replay; offline punches are marked `PIN not verified` for manager review.
+- Dedicated kiosk manifest and `/docs/KIOSK.md` native-prep contract.
+
+### Security
+- Device tokens are clock-only, scoped to one company/location, and revocable.
+- Kiosk pair codes expire after 10 minutes.
+
 ## [0.10.0-alpha] — 2026-11-04
 
 ### Security

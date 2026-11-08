@@ -16,7 +16,7 @@ OpenRoster borrows the *ideas* — Staffjoy's company/location/team/worker model
 
 ## Status
 
-OpenRoster is a **working public alpha**. Current release: **[v0.10.0-alpha](https://github.com/jaxjixmix/openRoster/releases/tag/v0.10.0-alpha)**. The repo is MIT and the delivery backlog is public:
+OpenRoster is a **working public alpha**. Current release: **[v0.11.0-alpha](https://github.com/jaxjixmix/openRoster/releases/tag/v0.11.0-alpha)**. The repo is MIT and the delivery backlog is public:
 
 - **Shipped:** data safety and transactions (#1), pay periods/clock/timezone (#2), self-service and scheduling depth (#3), operations/exports/polish (#4), public-repo bar (#5), environment config (#7), export-only payroll contract (#6).
 - **[#8 — demand forecasting](https://github.com/jaxjixmix/openRoster/issues/8)** — alpha covers/recommendation flow shipped; hour-level demand, CSV/POS import and draft-template conversion remain open.
@@ -33,7 +33,7 @@ The current boundary is deliberate: payroll stays a configurable preview/export,
 - **Open shifts** — staff can see published open shifts and claim them; the server checks leave, availability and weekly hours.
 - **Schedule** — day, week, 2-week, 4-week and month views; board and hour-by-hour timeline; right-click shift actions (copy, paste, repeat, delete) and drag-to-move between days; location filter, draft/publish, copy week, shift swaps, recurring templates, labor-budget warnings, realtime updates, overlap/leave/certification checks.
 - **Auto-fill** — assigns open shifts using availability, approved time off, existing shifts, weekly hour caps and position fit. It leaves genuinely uncovered shifts open instead of guessing.
-- **Time clock** — clock in/out, break start/end, optional rounding, PIN-locked kiosk mode, live “on the clock” list, duplicate-punch and backdating protection.
+- **Time clock** — clock in/out, break start/end, optional rounding, live “on the clock” list, duplicate-punch and backdating protection, plus a paired **kiosk tablet app** at `/kiosk` with employee PINs, device tokens, offline queue and revoke.
 - **Timesheets** — generated from punches (scheduled hours are a fallback), daily and weekly overtime, PTO, approve individually or in bulk. Approved sheets are locked.
 - **Payroll** — preview and draft runs from approved timesheets, configurable percent/fixed rules, per-stub breakdown, pay history, draft → approved → paid → voided, no destructive deletes.
 - **People** — profiles, pay, availability, documents, certifications, PTO ledger, recent punches, archive/restore.
@@ -126,6 +126,7 @@ The PocketBase dashboard is at http://localhost:8097/_/; keep it private.
 - **Backups:** `make backup`, then read [`docs/BACKUP.md`](docs/BACKUP.md). Restore is scripted and should be tested quarterly.
 - **Containers:** both images run as non-root; the web container has a healthcheck.
 - **Upgrades:** see [`docs/UPGRADE.md`](docs/UPGRADE.md).
+- **Kiosk tablets:** see [`docs/KIOSK.md`](docs/KIOSK.md).
 - **Releasing:** see [`docs/RELEASE.md`](docs/RELEASE.md) for the public-release checklist and branch-protection settings.
 - **i18n:** the interface ships in English and Spanish; pick the interface language per company in Settings → UI language. Date/number/currency formats follow Locale; server-generated emails stay English-only in the alpha.
 - **Configuration:** copy [`.env.example`](.env.example) values into your shell or compose file; `make dev-web` already passes `NEXT_PUBLIC_PB_URL` from `PB_PORT`.

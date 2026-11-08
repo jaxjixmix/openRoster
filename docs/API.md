@@ -38,6 +38,21 @@ curl -s http://127.0.0.1:8097/api/openroster/bootstrap \
   -H "Authorization: $TOKEN" | jq
 ```
 
+## Kiosk tablets
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/api/openroster/kiosk/devices` | manager | List paired devices (no token hashes) |
+| POST | `/api/openroster/kiosk/devices` | manager | Create a device and one-time 6-digit pairing code |
+| POST | `/api/openroster/kiosk/devices/revoke` | manager | Revoke a device token |
+| POST | `/api/openroster/kiosk/pair` | public | Exchange a pairing code for a device token |
+| GET | `/api/openroster/kiosk/roster` | device | Active employees at the device location + clock state |
+| POST | `/api/openroster/kiosk/punch` | device | Employee punch with PIN; offline replay uses `offline:true` + `client_id` |
+| POST | `/api/openroster/kiosk/employee-pin` | manager | Set/clear an employee's hashed kiosk PIN |
+
+Device routes require `X-Kiosk-Token`. Tokens are clock-only and scoped to one
+company and location; see [`KIOSK.md`](KIOSK.md).
+
 ## Offline punches
 
 A location with `geofence_meters > 0` requires browser coordinates for online punches; missing coordinates are rejected. Employees cannot switch to another location to dodge a fence. Queued offline punches are accepted without coordinates and marked `Geofence not verified.` in the note.

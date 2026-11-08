@@ -1433,6 +1433,226 @@ routerAdd("POST", "/api/openroster/demand/apply", (e) => {
   return e.json(200, { created: created, replaced: !!body.replace, note: note })
 }, $apis.requireAuth())
 
+// ------------------------------------------------------------------ kiosk devices
+routerAdd("GET", "/api/openroster/kiosk/devices", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const company = h.companyOf(e.app, e.auth)
+  if (!company) return h.bad(e, "Company not configured.", 404)
+  const rows = e.app.findRecordsByFilter("kiosk_devices", "company = {:company}", "name", 100, 0, { company: company.id })
+  return e.json(200, {
+    items: rows.map((row) => {
+      let location = null
+      try { location = e.app.findRecordById("locations", row.getString("location")) } catch (err) {}
+      return h.kioskDeviceView(row, location)
+    }),
+  })
+}, $apis.requireAuth())
+
+routerAdd("POST", "/api/openroster/kiosk/devices", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const company = h.companyOf(e.app, e.auth)
+  if (!company) return h.bad(e, "Company not configured.", 404)
+  const body = e.requestInfo().body || {}
+  const name = String(body.name || "Kiosk tablet").trim().slice(0, 120)
+  if (!body.location) return h.bad(e, "Choose a location for this kiosk.")
+  let location
+  try { location = e.app.findRecordById("locations", body.location) } catch (err) { return h.bad(e, "Unknown location.", 422) }
+  if (location.getString("company") !== company.id) return h.bad(e, "That location belongs to another company.", 403)
+
+  const code = $security.randomStringWithAlphabet(6, "0123456789")
+  const expires = new Date(Date.now() + 10 * 60000).toISOString()
+  try {
+    const record = new Record(e.app.findCollectionByNameOrId("kiosk_devices"))
+    record.set("company", company.id)
+    record.set("location", location.id)
+    record.set("name", name)
+    record.set("pair_code_hash", $security.sha256(code))
+    record.set("pair_expires_at", expires)
+    record.set("active", true)
+    record.set("paired_by", e.auth.id)
+    e.app.save(record)
+    h.audit(e.app, e.auth, "kiosk_devices", record.id, "create", "Created kiosk pairing code for " + name)
+    return e.json(201, { device: h.kioskDeviceView(record, location), code: code, expires_at: expires })
+  } catch (err) {
+    console.log("kiosk device create failed: " + err)
+    return e.json(500, { message: "Could not create kiosk device: " + String(err) })
+  }
+}, $apis.requireAuth())
+
+routerAdd("POST", "/api/openroster/kiosk/devices/revoke", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  if (!body.device) return h.bad(e, "Device is required.")
+  const company = h.companyOf(e.app, e.auth)
+  let device
+  try { device = e.app.findRecordById("kiosk_devices", body.device) } catch (err) { return h.bad(e, "Unknown device.", 404) }
+  if (!company || device.getString("company") !== company.id) return h.bad(e, "Unknown device.", 404)
+  device.set("active", false)
+  device.set("token_hash", "")
+  device.set("pair_code_hash", "")
+  device.set("pair_expires_at", "")
+  e.app.save(device)
+  h.audit(e.app, e.auth, "kiosk_devices", device.id, "update", "Revoked kiosk " + device.getString("name"))
+  return e.json(200, { ok: true })
+}, $apis.requireAuth())
+
+// Public: a tablet exchanges a one-time manager code for a device token.
+routerAdd("POST", "/api/openroster/kiosk/pair", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  const body = e.requestInfo().body || {}
+  const code = String(body.code || "").trim()
+  if (!/^\d{6}$/.test(code)) return e.json(422, { message: "Enter the 6-digit pairing code." })
+  let device = null
+  try {
+    device = e.app.findFirstRecordByFilter(
+      "kiosk_devices",
+      "pair_code_hash = {:hash} && active = true",
+      { hash: $security.sha256(code) }
+    )
+  } catch (err) { return e.json(401, { message: "That pairing code is not valid." }) }
+  if (!device || !device.getString("pair_expires_at") || h.toMs(device.getString("pair_expires_at")) < Date.now()) {
+    return e.json(401, { message: "That pairing code has expired. Ask a manager for a new one." })
+  }
+  const token = $security.randomString(48)
+  device.set("token_hash", $security.sha256(token))
+  device.set("pair_code_hash", "")
+  device.set("pair_expires_at", "")
+  device.set("last_seen", new Date().toISOString())
+  e.app.save(device)
+  let location = null
+  try { location = e.app.findRecordById("locations", device.getString("location")) } catch (err) {}
+  return e.json(200, { token: token, device: h.kioskDeviceView(device, location) })
+})
+
+// ------------------------------------------------------------------ kiosk device APIs
+routerAdd("GET", "/api/openroster/kiosk/roster", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  const ctx = h.kioskContext(e)
+  if (ctx.error) return ctx.error
+  const { device, company, location } = ctx
+  const employees = e.app.findRecordsByFilter(
+    "employees",
+    "company = {:company} && status = 'active' && location = {:location}",
+    "first_name",
+    300,
+    0,
+    { company: company.id, location: location.id }
+  )
+  const recent = e.app.findRecordsByFilter(
+    "punches",
+    "employee.company = {:company}",
+    "-punched_at",
+    2000,
+    0,
+    { company: company.id }
+  )
+  const latest = {}
+  recent.forEach((punch) => {
+    const id = punch.getString("employee")
+    if (!latest[id]) latest[id] = punch
+  })
+  return e.json(200, {
+    device: h.kioskDeviceView(device, location),
+    company: { id: company.id, name: company.getString("name"), timezone: company.getString("timezone"), locale: company.getString("locale") },
+    employees: employees.map((employee) => {
+      const punch = latest[employee.id]
+      const lastType = punch ? punch.getString("type") : ""
+      return {
+        id: employee.id,
+        first_name: employee.getString("first_name"),
+        last_name: employee.getString("last_name"),
+        name: (employee.getString("first_name") + " " + employee.getString("last_name")).trim(),
+        position: (() => {
+          try { return e.app.findRecordById("positions", employee.getString("position")).getString("name") } catch (err) { return "" }
+        })(),
+        has_pin: !!employee.getString("kiosk_pin_hash"),
+        clocked_in: lastType === "in" || lastType === "break_start" || lastType === "break_end",
+        on_break: lastType === "break_start",
+        last_punch_at: punch ? punch.getString("punched_at") : "",
+      }
+    }),
+  })
+})
+
+routerAdd("POST", "/api/openroster/kiosk/punch", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  const ctx = h.kioskContext(e)
+  if (ctx.error) return ctx.error
+  const { device, company, location } = ctx
+  const body = e.requestInfo().body || {}
+  const employeeId = String(body.employee || "")
+  const type = String(body.type || "")
+  if (!["in", "out", "break_start", "break_end"].includes(type)) return h.bad(e, "Unknown punch type.")
+  if (!employeeId) return h.bad(e, "Employee is required.")
+  let employee = null
+  try { employee = e.app.findRecordById("employees", employeeId) } catch (err) { return h.bad(e, "Unknown employee.", 404) }
+  if (employee.getString("company") !== company.id || employee.getString("location") !== location.id || employee.getString("status") !== "active") {
+    return h.bad(e, "This employee is not assigned to this kiosk's location.", 403)
+  }
+  const clientId = String(body.client_id || "").slice(0, 64)
+  const offline = body.offline === true && !!clientId && !!body.punched_at
+  if (!offline) {
+    if (!employee.getString("kiosk_pin_hash")) return h.bad(e, "Ask a manager to set a kiosk PIN for this employee.", 422)
+    if (!h.kioskPinMatches(employee, body.pin)) return h.bad(e, "Incorrect PIN.", 401)
+  }
+  if (clientId) {
+    const existing = e.app.findRecordsByFilter("punches", "client_id = {:clientId}", "", 1, 0, { clientId: clientId })
+    if (existing.length) return e.json(200, { punch: existing[0], duplicate: true })
+  }
+  let punchedAt = new Date()
+  if (body.punched_at) {
+    if (!clientId) return h.bad(e, "A client timestamp requires a client_id.", 422)
+    const parsed = Date.parse(body.punched_at)
+    const now = Date.now()
+    if (isNaN(parsed) || parsed > now + 120000 || parsed < now - 72 * 3600 * 1000) return h.bad(e, "Offline punch time is out of range.", 422)
+    punchedAt = new Date(parsed)
+  }
+
+  const latest = e.app.findRecordsByFilter("punches", "employee = {:employee}", "-punched_at", 1, 0, { employee: employee.id })
+  const lastType = latest.length ? latest[0].getString("type") : ""
+  if (type === "in" && (lastType === "in" || lastType === "break_start")) return h.bad(e, "This employee is already clocked in.", 409)
+  if (type === "out" && (!lastType || lastType === "out")) return h.bad(e, "No open clock-in to close.", 409)
+  if (type === "out" && lastType === "break_start") return h.bad(e, "End the break first.", 409)
+  if (type === "break_start" && lastType !== "in") return h.bad(e, "Clock in before starting a break.", 409)
+  if (type === "break_end" && lastType !== "break_start") return h.bad(e, "No open break to end.", 409)
+
+  const punch = new Record(e.app.findCollectionByNameOrId("punches"))
+  punch.set("employee", employee.id)
+  punch.set("location", location.id)
+  punch.set("type", type)
+  punch.set("punched_at", punchedAt.toISOString())
+  punch.set("source", "kiosk")
+  punch.set("kiosk_device", device.id)
+  if (clientId) punch.set("client_id", clientId)
+  if (clientId && body.punched_at) {
+    punch.set("note", offline
+      ? "Kiosk offline punch; timestamp supplied by the device. PIN not verified."
+      : "Kiosk offline punch; timestamp supplied by the device.")
+  }
+  e.app.save(punch)
+  return e.json(200, { punch: punch, device: h.kioskDeviceView(device, location) })
+})
+
+routerAdd("POST", "/api/openroster/kiosk/employee-pin", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  if (!body.employee) return h.bad(e, "Employee is required.")
+  const company = h.companyOf(e.app, e.auth)
+  let employee = null
+  try { employee = e.app.findRecordById("employees", body.employee) } catch (err) { return h.bad(e, "Unknown employee.", 404) }
+  if (!company || employee.getString("company") !== company.id) return h.bad(e, "Unknown employee.", 404)
+  const pin = String(body.pin || "").trim()
+  if (pin && !/^\d{4,8}$/.test(pin)) return h.bad(e, "Kiosk PIN must be 4–8 digits.")
+  employee.set("kiosk_pin_hash", pin ? $security.sha256(pin) : "")
+  e.app.save(employee)
+  h.audit(e.app, e.auth, "employees", employee.id, "update", pin ? "Set kiosk PIN" : "Cleared kiosk PIN")
+  return e.json(200, { ok: true })
+}, $apis.requireAuth())
+
 // ------------------------------------------------------------------ validation
 onRecordCreateRequest((e) => {
   const h = require(`${__hooks}/lib.js`)

@@ -7,6 +7,7 @@ import type {
   EmployeeCertification,
   Holiday,
   Location,
+  KioskDevice,
   KioskPin,
   PayPeriod,
   PayRule,
@@ -252,6 +253,23 @@ export async function getDepartments(): Promise<Department[]> {
 
 export async function getPositions(): Promise<Position[]> {
   return pb.collection("positions").getFullList<Position>({ sort: "name" });
+}
+
+export async function getKioskDevices(): Promise<KioskDevice[]> {
+  const result = await pb.send<{ items: KioskDevice[] }>("/api/openroster/kiosk/devices", { method: "GET" });
+  return result.items;
+}
+
+export async function createKioskDevice(name: string, location: string): Promise<{ code: string; expires_at: string; device: KioskDevice }> {
+  return pb.send("/api/openroster/kiosk/devices", { method: "POST", body: { name, location } });
+}
+
+export async function revokeKioskDevice(device: string): Promise<void> {
+  await pb.send("/api/openroster/kiosk/devices/revoke", { method: "POST", body: { device } });
+}
+
+export async function setEmployeeKioskPin(employee: string, pin: string): Promise<void> {
+  await pb.send("/api/openroster/kiosk/employee-pin", { method: "POST", body: { employee, pin } });
 }
 
 export async function getForecast(weekStart: string, location?: string): Promise<Record<string, unknown> | null> {

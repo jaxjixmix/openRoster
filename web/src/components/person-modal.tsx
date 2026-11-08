@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { pb } from "@/lib/pb";
 import { useAuth } from "@/lib/auth";
-import { errorMessage } from "@/lib/data";
+import { errorMessage, setEmployeeKioskPin } from "@/lib/data";
 import type { Department, Employee, Location, Position } from "@/lib/types";
 import { Button, ErrorNote, Input, Label, Modal, Select, Textarea, Toggle } from "@/components/ui";
 import { useToast } from "@/lib/toast";
@@ -33,6 +33,7 @@ const EMPTY = {
   pto_balance_hours: "0",
   hire_date: new Date().toISOString().slice(0, 10),
   employee_number: "",
+  kiosk_pin: "",
   notes: "",
   status: "active",
   create_login: true,
@@ -67,6 +68,7 @@ export function PersonModal({ open, onClose, employee, locations, departments, p
         pto_balance_hours: String(employee.pto_balance_hours || 0),
         hire_date: employee.hire_date ? employee.hire_date.slice(0, 10) : "",
         employee_number: employee.employee_number || "",
+        kiosk_pin: "",
         notes: employee.notes || "",
         status: employee.status || "active",
         create_login: false,
@@ -129,12 +131,18 @@ export function PersonModal({ open, onClose, employee, locations, departments, p
         notes: form.notes || undefined,
       };
 
+      let savedId = employee?.id || "";
       if (employee) {
         await pb.collection("employees").update(employee.id, payload);
         toast("Team member updated.");
       } else {
-        await pb.collection("employees").create(payload);
+        const created = await pb.collection("employees").create<{ id: string }>(payload);
+        savedId = created.id;
         toast("Team member added.");
+      }
+      if (form.kiosk_pin.trim()) {
+        if (!/^\d{4,8}$/.test(form.kiosk_pin.trim())) throw new Error("Kiosk PIN must be 4–8 digits.");
+        await setEmployeeKioskPin(savedId, form.kiosk_pin.trim());
       }
       onSaved();
       onClose();
@@ -257,6 +265,18 @@ export function PersonModal({ open, onClose, employee, locations, departments, p
               <option value="inactive">Inactive</option>
               <option value="archived">Archived</option>
             </Select>
+          </div>
+          <div>
+            <Label>Kiosk PIN</Label>
+            <Input
+              type="password"
+              inputMode="numeric"
+              value={form.kiosk_pin}
+              onChange={(e) => update("kiosk_pin", e.target.value.replace(/\D/g, "").slice(0, 8))}
+              placeholder={employee ? "Leave blank to keep current" : "4–8 digits"}
+              autoComplete="new-password"
+            />
+            <p className="mt-1 text-[10px] text-muted">Employees need this PIN to clock in on a paired tablet. It is hashed on the server.</p>
           </div>
         </div>
 
