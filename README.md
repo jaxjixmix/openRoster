@@ -6,7 +6,21 @@ Built for restaurants, clinics and shops that run on real shifts. One PocketBase
 
 > **Alpha — not payroll-compliant.** Payroll here is a configurable preview, not tax withholding, filings or direct deposit. **Do not use it to pay real people yet.** Read [Status](#status) and [Scope boundaries](#scope-boundaries-read-this) before deploying.
 
-![OpenRoster dashboard](docs/dashboard.png)
+![OpenRoster schedule](docs/screenshots/schedule-week.png)
+
+
+
+## Screenshots
+
+Demo workspace, 1440px desktop unless noted.
+
+| Schedule | Kiosk tablet |
+| --- | --- |
+| ![Week schedule](docs/screenshots/schedule-week.png) | ![Kiosk roster](docs/screenshots/kiosk.png) |
+| **Payroll preview** | **Reports** |
+| ![Payroll preview](docs/screenshots/payroll.png) | ![Reports](docs/screenshots/reports.png) |
+| **People** | **Month schedule** |
+| ![People](docs/screenshots/people.png) | ![Month schedule](docs/screenshots/schedule-month.png) |
 
 ## Why this exists
 
