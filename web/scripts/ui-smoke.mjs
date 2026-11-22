@@ -19,6 +19,8 @@ const WEB_PORT = Number(process.env.TEST_WEB_PORT || 3001);
 const PB_URL = `http://127.0.0.1:${PB_PORT}`;
 const WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
 const SUPER_PASSWORD = "test-superuser-password";
+// Set through the manager route so the browser test does not depend on seeded PINs.
+const KIOSK_PIN = "4821";
 
 let pb = null;
 let web = null;
@@ -333,10 +335,15 @@ async function main() {
     assert.match(await page.locator(".fixed.bottom-5").innerText(), /draft shifts/);
     console.log("PASS demand forecast");
 
-    const kiosk = await page.evaluate(async (pbUrl) => {
+    const kiosk = await page.evaluate(async ({ pbUrl, PIN }) => {
       const auth = JSON.parse(localStorage.getItem("pocketbase_auth") || "{}");
       const headers = { Authorization: auth.token, "Content-Type": "application/json" };
       const sam = await (await fetch(`${pbUrl}/api/collections/employees/records?perPage=1&filter=first_name='Sam'`, { headers })).json();
+      const pinSet = await (await fetch(`${pbUrl}/api/openroster/kiosk/employee-pin`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ employee: sam.items[0].id, pin: PIN }),
+      })).json();
       const device = await (await fetch(`${pbUrl}/api/openroster/kiosk/devices`, {
         method: "POST",
         headers,
@@ -347,9 +354,10 @@ async function main() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: device.code }),
       })).json();
-      return { token: paired.token, samId: sam.items[0].id };
-    }, PB_URL);
+      return { token: paired.token, samId: sam.items[0].id, pinSet: pinSet.ok };
+    }, { pbUrl: PB_URL, PIN: KIOSK_PIN });
     assert.ok(kiosk.token, "kiosk paired");
+    assert.equal(kiosk.pinSet, true, "manager set the kiosk PIN");
     await page.evaluate(({ token }) => localStorage.setItem("openroster.kiosk.token", token), kiosk);
     await page.goto(`${WEB_URL}/kiosk`, { waitUntil: "networkidle" });
     await page.getByText("Sam Rivera").first().waitFor({ timeout: 10000 });
@@ -363,17 +371,17 @@ async function main() {
     await page.getByRole("button", { name: "0" }).click();
     await page.getByRole("button", { name: "OK" }).click();
     await page.getByText(/Incorrect PIN/).waitFor({ timeout: 8000 });
-    for (const digit of ["1", "2", "3", "4"]) await page.getByRole("button", { name: digit }).click();
+    for (const digit of KIOSK_PIN.split("")) await page.getByRole("button", { name: digit }).click();
     await page.getByRole("button", { name: "OK" }).click();
     await page.getByText(/Clocked (in|out)/).first().waitFor({ timeout: 8000 });
     if (actionName === "Clock in") {
-      await page.evaluate(async ({ pbUrl, token, samId }) => {
+      await page.evaluate(async ({ pbUrl, token, samId, PIN }) => {
         await fetch(`${pbUrl}/api/openroster/kiosk/punch`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Kiosk-Token": token },
-          body: JSON.stringify({ employee: samId, type: "out", pin: "1234" }),
+          body: JSON.stringify({ employee: samId, type: "out", pin: PIN }),
         });
-      }, { pbUrl: PB_URL, token: kiosk.token, samId: kiosk.samId });
+      }, { pbUrl: PB_URL, token: kiosk.token, samId: kiosk.samId, PIN: KIOSK_PIN });
     }
     console.log("PASS kiosk pairing and PIN punch");
 
@@ -383,18 +391,20 @@ async function main() {
     await page.context().setOffline(true);
     await page.getByRole("button", { name: /Sam Rivera/ }).first().click();
     await page.getByRole("button", { name: "Clock in" }).click();
+    for (const digit of KIOSK_PIN.split("")) await page.getByRole("button", { name: digit }).click();
+    await page.getByRole("button", { name: "OK" }).click();
     await page.waitForTimeout(500);
     const kioskQueue = await page.evaluate(() => JSON.parse(localStorage.getItem("openroster.kiosk.queue.v1") || "[]"));
     assert.equal(kioskQueue.length, 1, "offline kiosk punch queued");
     await page.context().setOffline(false);
     await page.waitForFunction(() => JSON.parse(localStorage.getItem("openroster.kiosk.queue.v1") || "[]").length === 0, null, { timeout: 15000 });
-    await page.evaluate(async ({ pbUrl, token, samId }) => {
+    await page.evaluate(async ({ pbUrl, token, samId, PIN }) => {
       await fetch(`${pbUrl}/api/openroster/kiosk/punch`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Kiosk-Token": token },
-        body: JSON.stringify({ employee: samId, type: "out", pin: "1234" }),
+        body: JSON.stringify({ employee: samId, type: "out", pin: PIN }),
       });
-    }, { pbUrl: PB_URL, token: kiosk.token, samId: kiosk.samId });
+    }, { pbUrl: PB_URL, token: kiosk.token, samId: kiosk.samId, PIN: KIOSK_PIN });
     console.log("PASS kiosk offline queue");
 
     await page.goto(`${WEB_URL}/settings`, { waitUntil: "networkidle" });

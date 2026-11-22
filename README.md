@@ -221,7 +221,7 @@ OpenRoster is a complete workflow, not a compliance product.
 - **SQLite / PocketBase scale.** Excellent for a few hundred staff and modest concurrency; not a distributed enterprise system.
 - **Geofence is best-effort.** When the browser shares coordinates, clock-in rejects a punch outside the location radius. If permission is denied, the punch is accepted.
 - **No shift swaps, recurring shifts, copy-week, labor budgets, certifications, or push notifications yet.**
-- **Kiosk PIN is a UI lock, not an authentication boundary.** Use a locked-down tablet and HTTPS.
+- **The manager override PIN is a UI lock, not an authentication boundary.** It unlocks the time-clock page for a supervisor; use a locked-down tablet and HTTPS. Employee kiosk PINs are a different thing: salted, peppered hashes with server-side lockouts.
 - **Email notifications require SMTP.** In-app notifications are built in; email is opt-in and needs PocketBase mail settings.
 - **No payroll tax engine or payment provider.** Pay stubs are printable, not filed.
 - **No translation/i18n.** Locale controls currency/date formatting; UI copy is English. Break punches, rounding and a kiosk PIN are supported.

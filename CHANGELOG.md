@@ -4,6 +4,23 @@ All notable changes to OpenRoster are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-1.0 prerelease versions while the payroll boundary remains alpha.
 
+## [Unreleased]
+
+### Security
+- Kiosk PINs are now stored as salted, peppered, iterated HMAC-SHA-256 (`v2$2000$salt$digest`) instead of a bare SHA-256, with the pepper held outside the database (env or a generated file beside `pb_data`). Existing hashes keep working and upgrade on the next correct entry.
+- Wrong-PIN lockouts, enforced server-side: 3 wrong PINs lock the employee out for 10 seconds, escalating to 30 s / 5 min / 15 min / 30 min; 20 wrong PINs lock the tablet, and only a manager can clear it. Pairing codes are capped per client address.
+- Offline (queued) punches now require the employee PIN and are verified on sync; they were previously accepted with no PIN check and up to 72 hours of backdating. The backdate window is 12 hours and queued punches are noted as `PIN verified on sync`.
+- New kiosk PIN policy: repeated digits, runs, short patterns, the employee's own phone number or dates on file, and PINs already used by another employee in the company are refused.
+- Every kiosk PIN attempt is recorded in the new `kiosk_auth_events` collection (employee, tablet, hashed client address, timestamp) for manager review.
+
+### Added
+- `POST /api/openroster/kiosk/reset-lock` for managers, and an **Unlock** action per tablet in Settings → Kiosk mode.
+- Manager-visible rejection banner on the kiosk for queued punches that could not be verified.
+
+### Changed
+- Kiosk keypad: PIN dots grow with the PIN instead of always showing four, wrong PINs shake the pad, the keypad disables itself during a lockout with a countdown, and every key answers with a haptic buzz or a click.
+- Demo seed gives each employee their own non-obvious kiosk PIN and prints the list.
+
 ## [0.11.0-alpha] — 2026-11-09
 
 ### Added
