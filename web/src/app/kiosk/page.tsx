@@ -6,7 +6,15 @@ import { pb } from "@/lib/pb";
 import { Avatar, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatTime } from "@/lib/dates";
-import { enqueueKioskPunch, getKioskQueue, removeKioskPunch } from "@/lib/kiosk-offline";
+import {
+  MAX_KIOSK_QUEUE,
+  addKioskRejected,
+  clearKioskRejected,
+  enqueueKioskPunch,
+  getKioskQueue,
+  getKioskRejected,
+  removeKioskPunch,
+} from "@/lib/kiosk-offline";
 
 type PunchAction = "in" | "out" | "break_start" | "break_end";
 
@@ -29,6 +37,31 @@ interface Roster {
 }
 
 const TOKEN_KEY = "openroster.kiosk.token";
+const PIN_MIN = 4;
+const PIN_MAX = 8;
+
+interface KioskErrorPayload {
+  message?: string;
+  retry_after?: number;
+  attempts_left?: number;
+  locked?: boolean;
+}
+
+// PocketBase's errors carry the server body in `.data` (and the raw body in `.response`,
+// depending on the SDK version), so read both before falling back to the generic message.
+function errorPayload(err: unknown): KioskErrorPayload {
+  const source = err as { data?: unknown; response?: unknown } | null;
+  const merged: Record<string, unknown> = {};
+  for (const candidate of [source?.response, source?.data]) {
+    if (candidate && typeof candidate === "object") Object.assign(merged, candidate as Record<string, unknown>);
+  }
+  return merged as KioskErrorPayload;
+}
+
+function errorStatus(err: unknown): number {
+  const status = (err as { status?: number } | null)?.status;
+  return typeof status === "number" ? status : 0;
+}
 
 export default function KioskPage() {
   const [token, setToken] = useState("");
@@ -46,7 +79,46 @@ export default function KioskPage() {
   const [online, setOnline] = useState(true);
   const [queued, setQueued] = useState(0);
   const [search, setSearch] = useState("");
+  const [lockLeft, setLockLeft] = useState(0);
+  const [shake, setShake] = useState(0);
+  const [rejected, setRejected] = useState(0);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audio = useRef<AudioContext | null>(null);
+
+  // The tablet is tapped with a thumb, usually without looking: every key answers with a
+  // short haptic where the platform has one and a click where it does not (iPad Safari).
+  function tapFeedback(strong = false) {
+    try { navigator.vibrate?.(strong ? 60 : 8); } catch {}
+    try {
+      const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      audio.current = audio.current || new Ctor();
+      const context = audio.current;
+      if (context.state === "suspended") void context.resume();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "square";
+      oscillator.frequency.value = strong ? 196 : 660;
+      const loudness = strong ? 0.07 : 0.025;
+      gain.gain.setValueAtTime(loudness, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + (strong ? 0.22 : 0.045));
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + (strong ? 0.24 : 0.06));
+    } catch {}
+  }
+
+  function pressDigit(digit: string) {
+    if (lockLeft > 0) return;
+    tapFeedback();
+    setPin((value) => (value + digit).slice(0, PIN_MAX));
+  }
+
+  function pressBackspace() {
+    if (lockLeft > 0) return;
+    tapFeedback();
+    setPin((value) => value.slice(0, -1));
+  }
 
   const load = useCallback(async (deviceToken = token) => {
     if (!deviceToken) return;
@@ -84,10 +156,19 @@ export default function KioskPage() {
     return () => clearInterval(timer);
   }, []);
 
+  const locked = lockLeft > 0;
+
+  useEffect(() => {
+    if (!locked) return;
+    const timer = setInterval(() => setLockLeft((value) => (value <= 1 ? 0 : value - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [locked]);
+
   const syncQueue = useCallback(async () => {
     if (!token) return;
     const pending = getKioskQueue();
     let synced = 0;
+    let refused = 0;
     for (const item of pending) {
       try {
         await pb.send("/api/openroster/kiosk/punch", {
@@ -96,6 +177,7 @@ export default function KioskPage() {
           body: {
             employee: item.employee,
             type: item.type,
+            pin: item.pin,
             client_id: item.id,
             punched_at: item.punched_at,
             offline: true,
@@ -104,20 +186,28 @@ export default function KioskPage() {
         removeKioskPunch(item.id);
         synced++;
       } catch (err) {
-        const status = (err as { status?: number }).status;
-        if (status === 400 || status === 409 || status === 422) {
+        const status = errorStatus(err);
+        // A wrong or missing PIN will never succeed on retry: drop it and count it so the
+        // board can ask for help instead of retrying in silence. A lockout (429) is a wait.
+        if (status === 400 || status === 401 || status === 409 || status === 422 || status === 403) {
           removeKioskPunch(item.id);
+          refused++;
         } else {
           break;
         }
       }
     }
     setQueued(getKioskQueue().length);
+    if (refused) {
+      addKioskRejected(refused);
+      setRejected(getKioskRejected());
+    }
     if (synced) await load();
   }, [token, load]);
 
   useEffect(() => {
     setQueued(getKioskQueue().length);
+    setRejected(getKioskRejected());
     const update = () => {
       setOnline(navigator.onLine);
       if (navigator.onLine) void syncQueue();
@@ -201,27 +291,14 @@ export default function KioskPage() {
   }, [roster, search]);
 
   function beginPunch(employee: KioskEmployee, nextAction: PunchAction) {
-    if (!navigator.onLine) {
-      enqueueKioskPunch({
-        employee: employee.id,
-        employee_name: employee.name,
-        type: nextAction,
-        punched_at: new Date().toISOString(),
-      });
-      setQueued(getKioskQueue().length);
-      setNotice(`Punch queued · ${employee.name}`);
-      setSelected(null);
-      setAction(null);
-      setPin("");
-      setError("");
-      setTimeout(backToIdle, 4500);
-      return;
-    }
+    // Offline included: the PIN is taken here and the server verifies it when the queue
+    // syncs, so a tablet that is off the network cannot record unauthenticated punches.
     setSelected(employee);
     setAction(nextAction);
     setPin("");
     setError("");
     setNotice("");
+    setLockLeft(0);
   }
 
   function actionLabel(value: PunchAction) {
@@ -230,17 +307,29 @@ export default function KioskPage() {
 
   async function submitPunch() {
     if (!selected || !action) return;
+    if (locked) return;
+    if (pin.length < PIN_MIN) { setError(`Enter your ${PIN_MIN}–${PIN_MAX} digit PIN.`); return; }
     if (!navigator.onLine) {
-      enqueueKioskPunch({ employee: selected.id, employee_name: selected.name, type: action, punched_at: new Date().toISOString() });
+      const queuedPunch = enqueueKioskPunch({
+        employee: selected.id,
+        employee_name: selected.name,
+        type: action,
+        punched_at: new Date().toISOString(),
+        pin,
+      });
+      if (!queuedPunch) {
+        setError(`This tablet is holding ${MAX_KIOSK_QUEUE} unsynced punches. Get it back online before clocking more.`);
+        return;
+      }
       setQueued(getKioskQueue().length);
-      setNotice(`Punch queued · ${selected.name}`);
+      setNotice(`Queued · ${selected.name}`);
       setSelected(null);
       setAction(null);
       setPin("");
+      tapFeedback(true);
       setTimeout(backToIdle, 4500);
       return;
     }
-    if (pin.length < 4) { setError("Enter the employee's 4–8 digit PIN."); return; }
     setPunchBusy(true);
     setError("");
     try {
@@ -253,12 +342,27 @@ export default function KioskPage() {
       setSelected(null);
       setAction(null);
       setPin("");
+      tapFeedback(true);
       await load();
       setTimeout(backToIdle, 4500);
     } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 401) setError("Incorrect PIN. Try again.");
-      else setError(err instanceof Error ? err.message : "Could not record the punch.");
+      const status = errorStatus(err);
+      const payload = errorPayload(err);
+      const retryAfter = Math.max(0, Math.round(Number(payload.retry_after) || 0));
+      if (status === 429 || retryAfter > 0) {
+        setLockLeft(retryAfter || 30);
+        setError(payload.message || "Too many wrong PINs. Wait for the cooldown or ask a manager to unlock this kiosk.");
+      } else if (status === 401) {
+        setError(payload.message || "Incorrect PIN. Try again.");
+      } else if (status === 422) {
+        setError(payload.message || "A manager needs to set your kiosk PIN first.");
+      } else {
+        setError(err instanceof Error ? err.message : "Could not record the punch.");
+      }
+      if (status === 401 || status === 429 || status === 422) {
+        setShake((value) => value + 1);
+        tapFeedback(true);
+      }
       setPin("");
     } finally {
       setPunchBusy(false);
@@ -403,13 +507,26 @@ export default function KioskPage() {
 
           {!online && (
             <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#e8d4a8] bg-[#fbf4e4] px-4 py-3 text-sm text-[#6b5218]">
-              <WifiOff className="size-4 shrink-0" /> Offline. Punches queue on this tablet and sync when it reconnects; PIN checks happen on sync.
+              <WifiOff className="size-4 shrink-0" /> Offline. Your PIN is taken now and checked the moment this tablet reconnects; the punch queues until then.
             </div>
           )}
           {queued > 0 && (
             <div className="mb-4 flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-sm">
               <span>{queued} punch{queued === 1 ? "" : "es"} waiting to sync.</span>
               <span className="text-[11px] text-muted">Keep this tab open.</span>
+            </div>
+          )}
+          {rejected > 0 && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-[#eccac4] bg-[#f9eeec] px-4 py-3 text-sm text-[#8e342b]">
+              <span>
+                {rejected} queued punch{rejected === 1 ? "" : "es"} could not be verified (wrong or missing PIN) and {rejected === 1 ? "was" : "were"} not recorded. Ask a manager to check.
+              </span>
+              <button
+                onClick={() => { clearKioskRejected(); setRejected(0); }}
+                className="shrink-0 rounded-lg border border-[#e0b3ab] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.1em]"
+              >
+                Dismiss
+              </button>
             </div>
           )}
           {error && !(selected && action) && <div className="mb-4 rounded-xl border border-[#eccac4] bg-[#f9eeec] px-4 py-3 text-sm text-[#8e342b]">{error}</div>}
@@ -431,23 +548,32 @@ export default function KioskPage() {
               <Button variant="ghost" size="sm" onClick={backToIdle} className="-ml-2"><ArrowLeft className="size-4" /> Roster</Button>
               <div className="mt-6 grid gap-4 lg:min-h-[calc(100dvh-12rem)] lg:grid-cols-[.85fr_1.15fr] lg:items-center">
                 <EmployeePanel employee={selected} tz={timezone} className="panel-raised p-6 lg:p-8" />
-                <section className="panel-raised p-6 lg:p-8">
-                  <p className="text-sm font-semibold">Enter your PIN</p>
-                  <p className="mt-1 text-xs text-muted">{action === "in" ? "Clock in" : action === "out" ? "Clock out" : action === "break_start" ? "Start break" : "End break"} · records at {timeLabel}</p>
-                  <div className="mt-6 grid grid-cols-3 gap-2">
-                    {[1,2,3,4,5,6,7,8,9].map((digit) => (
-                      <button key={digit} onClick={() => setPin((value) => (value + digit).slice(0, 8))} className="rounded-xl border border-line bg-surface py-5 font-mono text-2xl font-semibold transition hover:border-line-strong hover:bg-[#fbf6ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30">{digit}</button>
-                    ))}
-                    <button onClick={() => setPin((value) => value.slice(0, -1))} aria-label="Backspace" className="rounded-xl border border-line bg-surface py-5 text-muted transition hover:border-line-strong hover:bg-[#fbf6ec]"><Delete className="mx-auto size-5" /></button>
-                    <button onClick={() => setPin((value) => (value + "0").slice(0, 8))} className="rounded-xl border border-line bg-surface py-5 font-mono text-2xl font-semibold transition hover:border-line-strong hover:bg-[#fbf6ec]">0</button>
-                    <button onClick={() => void submitPunch()} disabled={punchBusy || pin.length < 4} className="rounded-xl bg-ink py-5 font-semibold text-[#f4f1e8] transition hover:bg-[#2a2a22] disabled:opacity-40">{punchBusy ? "Saving…" : "OK"}</button>
+                <section key={shake} className={cn("panel-raised p-6 lg:p-8", shake > 0 && "animate-kiosk-shake")}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-sm font-semibold">Enter your PIN</p>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-muted">{PIN_MIN}–{PIN_MAX} digits</p>
                   </div>
-                  <div className="mt-5 flex justify-center gap-2">
-                    {Array.from({ length: 4 }, (_, index) => (
+                  <p className="mt-1 text-xs text-muted">{action === "in" ? "Clock in" : action === "out" ? "Clock out" : action === "break_start" ? "Start break" : "End break"} · records at {timeLabel}</p>
+                  <div className={cn("mt-6 grid grid-cols-3 gap-2", locked && "opacity-40")} aria-disabled={locked}>
+                    {[1,2,3,4,5,6,7,8,9].map((digit) => (
+                      <button key={digit} onClick={() => pressDigit(String(digit))} disabled={locked || punchBusy} className="rounded-xl border border-line bg-surface py-5 font-mono text-2xl font-semibold transition hover:border-line-strong hover:bg-[#fbf6ec] active:scale-[0.97] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30">{digit}</button>
+                    ))}
+                    <button onClick={pressBackspace} disabled={locked || punchBusy} aria-label="Backspace" className="rounded-xl border border-line bg-surface py-5 text-muted transition hover:border-line-strong hover:bg-[#fbf6ec] active:scale-[0.97] disabled:opacity-60"><Delete className="mx-auto size-5" /></button>
+                    <button onClick={() => pressDigit("0")} disabled={locked || punchBusy} className="rounded-xl border border-line bg-surface py-5 font-mono text-2xl font-semibold transition hover:border-line-strong hover:bg-[#fbf6ec] active:scale-[0.97] disabled:opacity-60">0</button>
+                    <button onClick={() => void submitPunch()} disabled={locked || punchBusy || pin.length < PIN_MIN} className="rounded-xl bg-ink py-5 font-semibold text-[#f4f1e8] transition hover:bg-[#2a2a22] active:scale-[0.97] disabled:opacity-40">{punchBusy ? "Saving…" : "OK"}</button>
+                  </div>
+                  <div className="mt-5 flex justify-center gap-2" role="status" aria-live="polite">
+                    {Array.from({ length: Math.min(PIN_MAX, Math.max(PIN_MIN, pin.length)) }, (_, index) => (
                       <span key={index} className={cn("size-2 rounded-full transition", pin.length > index ? "bg-ink" : "bg-line")} />
                     ))}
                   </div>
-                  {error && <p className="mt-4 text-center text-xs font-medium text-danger">{error}</p>}
+                  {locked ? (
+                    <p className="mt-4 rounded-xl border border-[#e8d4a8] bg-[#fbf4e4] px-4 py-3 text-center text-xs font-medium text-[#6b5218]" role="alert">
+                      Too many wrong PINs. This kiosk is paused for {lockLeft}s. A manager can unlock it in Settings.
+                    </p>
+                  ) : error ? (
+                    <p className="mt-4 rounded-xl border border-[#eccac4] bg-[#f9eeec] px-4 py-3 text-center text-xs font-medium text-[#8e342b]" role="alert">{error}</p>
+                  ) : null}
                 </section>
               </div>
             </div>

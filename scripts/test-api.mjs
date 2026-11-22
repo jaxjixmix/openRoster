@@ -594,11 +594,43 @@ async function main() {
     });
     assert.equal(paired.status, 200, JSON.stringify(paired.data));
     const kioskHeaders = { "X-Kiosk-Token": paired.data.token };
+    // Six-digit codes are walkable, so the address is capped per window.
+    let pairLocked = 0;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const badPair = await request("/api/openroster/kiosk/pair", { method: "POST", body: { code: "000000" } });
+      if (badPair.status === 429) pairLocked++;
+    }
+    assert.ok(pairLocked >= 3, "repeated pairing attempts get locked out");
+    console.log("PASS kiosk pairing rate limit");
     const roster = await request("/api/openroster/kiosk/roster", { headers: kioskHeaders });
     assert.equal(roster.status, 200, JSON.stringify(roster.data));
     const samRoster = roster.data.employees.find((employee) => employee.id === sam.id);
     assert.ok(samRoster, "kiosk roster includes Sam");
     assert.equal(samRoster.has_pin, true);
+    // A manager sets the PIN, which is also where the policy bites.
+    const samPin = "4821";
+    const weakPin = await request("/api/openroster/kiosk/employee-pin", {
+      method: "POST",
+      token,
+      body: { employee: sam.id, pin: "1234" },
+    });
+    assert.equal(weakPin.status, 422, "consecutive digits are refused");
+    assert.match(weakPin.data.message, /consecutive/);
+    const samPinSet = await request("/api/openroster/kiosk/employee-pin", {
+      method: "POST",
+      token,
+      body: { employee: sam.id, pin: samPin },
+    });
+    assert.equal(samPinSet.status, 200, JSON.stringify(samPinSet.data));
+    const sharedPin = await request("/api/openroster/kiosk/employee-pin", {
+      method: "POST",
+      token,
+      body: { employee: priya.id, pin: samPin },
+    });
+    assert.equal(sharedPin.status, 422, "a PIN another employee holds is refused");
+    assert.match(sharedPin.data.message, /already uses/);
+    console.log("PASS kiosk PIN policy");
+
     const kioskType = samRoster.clocked_in ? "out" : "in";
     const wrongPin = await request("/api/openroster/kiosk/punch", {
       method: "POST",
@@ -606,21 +638,58 @@ async function main() {
       body: { employee: sam.id, type: kioskType, pin: "0000" },
     });
     assert.equal(wrongPin.status, 401, "wrong kiosk PIN rejected");
+    assert.equal(wrongPin.data.data.attempts_left, 2, "the tablet is told how many tries are left");
+    const pinlessPunch = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: { employee: sam.id, type: kioskType },
+    });
+    assert.equal(pinlessPunch.status, 422, "a punch without a PIN is refused");
+
+    // Two more wrong PINs trip the lockout, and a right PIN stays locked out.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await request("/api/openroster/kiosk/punch", {
+        method: "POST",
+        headers: kioskHeaders,
+        body: { employee: sam.id, type: kioskType, pin: "0001" },
+      });
+    }
+    const lockedKiosk = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: { employee: sam.id, type: kioskType, pin: samPin },
+    });
+    assert.equal(lockedKiosk.status, 429, "a locked kiosk refuses even the right PIN");
+    assert.equal(lockedKiosk.data.data.locked, true);
+    assert.ok(lockedKiosk.data.data.retry_after >= 1, "the lockout reports a cooldown");
+    const strangerUnlock = await request("/api/openroster/kiosk/reset-lock", {
+      method: "POST",
+      body: { employee: sam.id },
+    });
+    assert.equal(strangerUnlock.status, 401, "unlocking a kiosk lockout needs a manager");
+    const unlocked = await request("/api/openroster/kiosk/reset-lock", {
+      method: "POST",
+      token,
+      body: { employee: sam.id },
+    });
+    assert.equal(unlocked.status, 200, JSON.stringify(unlocked.data));
     const kioskPunch = await request("/api/openroster/kiosk/punch", {
       method: "POST",
       headers: kioskHeaders,
-      body: { employee: sam.id, type: kioskType, pin: "1234" },
+      body: { employee: sam.id, type: kioskType, pin: samPin },
     });
     assert.equal(kioskPunch.status, 200, JSON.stringify(kioskPunch.data));
     assert.equal(kioskPunch.data.punch.kiosk_device, kioskDevice.data.device.id);
     const reverseKiosk = await request("/api/openroster/kiosk/punch", {
       method: "POST",
       headers: kioskHeaders,
-      body: { employee: sam.id, type: kioskType === "in" ? "out" : "in", pin: "1234" },
+      body: { employee: sam.id, type: kioskType === "in" ? "out" : "in", pin: samPin },
     });
     assert.equal(reverseKiosk.status, 200, "kiosk can reverse the punch for cleanup");
+    console.log("PASS kiosk PIN lockout and manager unlock");
+
     const offlineKioskId = `kiosk-offline-${Date.now()}`;
-    const offlineKiosk = await request("/api/openroster/kiosk/punch", {
+    const offlineNoPin = await request("/api/openroster/kiosk/punch", {
       method: "POST",
       headers: kioskHeaders,
       body: {
@@ -631,14 +700,54 @@ async function main() {
         punched_at: new Date(Date.now() + 30000).toISOString(),
       },
     });
+    assert.equal(offlineNoPin.status, 422, "an offline punch with no PIN is refused");
+    const offlineKiosk = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: {
+        employee: sam.id,
+        type: "in",
+        pin: samPin,
+        offline: true,
+        client_id: offlineKioskId,
+        punched_at: new Date(Date.now() + 30000).toISOString(),
+      },
+    });
     assert.equal(offlineKiosk.status, 200, "kiosk offline punch accepted");
-    assert.match(offlineKiosk.data.punch.note, /PIN not verified/);
+    assert.match(offlineKiosk.data.punch.note, /PIN verified on sync/);
+    const staleKioskOffline = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: {
+        employee: sam.id,
+        type: "in",
+        pin: samPin,
+        offline: true,
+        client_id: `${offlineKioskId}-stale`,
+        punched_at: new Date(Date.now() - 13 * 3600 * 1000).toISOString(),
+      },
+    });
+    assert.equal(staleKioskOffline.status, 422, "an offline punch past the backdate window is refused");
+    const wrongPinOffline = await request("/api/openroster/kiosk/punch", {
+      method: "POST",
+      headers: kioskHeaders,
+      body: {
+        employee: sam.id,
+        type: "out",
+        pin: "0000",
+        offline: true,
+        client_id: `${offlineKioskId}-wrong`,
+        punched_at: new Date(Date.now() + 31000).toISOString(),
+      },
+    });
+    assert.equal(wrongPinOffline.status, 401, "an offline queue entry is verified on sync");
     const duplicateKiosk = await request("/api/openroster/kiosk/punch", {
       method: "POST",
       headers: kioskHeaders,
       body: {
         employee: sam.id,
         type: "in",
+        pin: samPin,
         offline: true,
         client_id: offlineKioskId,
         punched_at: new Date(Date.now() + 30000).toISOString(),
@@ -652,6 +761,7 @@ async function main() {
       body: {
         employee: sam.id,
         type: "out",
+        pin: samPin,
         offline: true,
         client_id: `${offlineKioskId}-out`,
         punched_at: new Date(Date.now() + 31000).toISOString(),

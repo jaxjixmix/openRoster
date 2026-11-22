@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
 // Seeds a demo company. Safe to re-run: creates a second company with a suffix.
 const PB = process.env.PB_URL || "http://127.0.0.1:8097";
 const EMAIL = process.env.PB_SUPERUSER || "admin@openroster.local";
@@ -334,13 +335,31 @@ async function main() {
   });
   token = manager.token;
 
-  // Demo employees share kiosk PIN 1234; set individually via the manager route.
+  // Each demo employee gets their own kiosk PIN: the server refuses weak PINs and refuses a
+  // PIN another employee already uses, so a shared "1234" would be rejected outright.
+  const { kioskPinIsWeak } = createRequire(import.meta.url)("../pb/pb_hooks/lib.js");
+  const usedDemoPins = [];
+  const demoPin = (index) => {
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const pin = String(1000 + ((index * 613 + attempt * 1009) % 8999));
+      if (usedDemoPins.indexOf(pin) !== -1) continue;
+      if (kioskPinIsWeak(pin, {})) continue;
+      usedDemoPins.push(pin);
+      return pin;
+    }
+    throw new Error("could not pick a demo kiosk PIN");
+  };
+  const demoPins = [];
+  let demoIndex = 0;
   for (const person of Object.values(employees)) {
+    const pin = demoPin(demoIndex++);
     await api("/api/openroster/kiosk/employee-pin", {
       method: "POST",
-      body: JSON.stringify({ employee: person.id, pin: "1234" }),
+      body: JSON.stringify({ employee: person.id, pin }),
     });
+    demoPins.push(`${person.first_name || person.id}: ${pin}`);
   }
+  console.log("Kiosk PINs for the demo team:", demoPins.join(", "));
 
   const periodFrom = addDays(WEEK_START, -7);
   const periodTo = addDays(WEEK_START, 90);

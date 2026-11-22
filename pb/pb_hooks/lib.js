@@ -113,10 +113,265 @@ function kioskContext(e) {
   return { device: device, company: company, location: location }
 }
 
-function kioskPinMatches(employee, pin) {
-  const hash = employee.getString("kiosk_pin_hash")
-  if (!hash) return false
-  return hash === $security.sha256(String(pin || ""))
+// ------------------------------------------------------------ kiosk PIN security
+// A v2 PIN hash is HMAC-SHA256(salt + ":" + pin, pepper) iterated KIOSK_PIN_ROUNDS times,
+// stored as `v2$<rounds>$<salt>$<digest>`. The pepper lives outside the database (env or a
+// generated file beside pb_data), so a stolen database alone cannot be cracked offline, and
+// the per-employee salt stops one cracked PIN (or a precomputed table) from opening others.
+// Rows written before this change are a bare sha256(pin); they still verify and are rehashed
+// to v2 the next time the right PIN is entered.
+const KIOSK_PIN_ALGO = "v2"
+const KIOSK_PIN_ROUNDS = 2000
+const KIOSK_PIN_MIN = 4
+const KIOSK_PIN_MAX = 8
+const KIOSK_PIN_WINDOW_MS = 15 * 60 * 1000
+const KIOSK_PAIR_WINDOW_MS = 10 * 60 * 1000
+const KIOSK_EMPLOYEE_FAIL_LIMIT = 3
+const KIOSK_DEVICE_FAIL_LIMIT = 20
+const KIOSK_PAIR_FAIL_LIMIT = 10
+// seconds of lockout by consecutive failure count (index 0 = no failures yet)
+const KIOSK_LOCK_STEPS = [0, 0, 0, 10, 30, 300, 900, 1800]
+const KIOSK_DEVICE_LOCK_SECONDS = 900
+const KIOSK_PAIR_LOCK_SECONDS = 600
+
+function kioskDigest(message, key) {
+  if (typeof $security !== "undefined" && $security && typeof $security.hs256 === "function") {
+    return $security.hs256(String(message), String(key))
+  }
+  if (typeof globalThis !== "undefined" && typeof globalThis.__kioskDigest === "function") {
+    return globalThis.__kioskDigest(String(message), String(key))
+  }
+  throw new Error("No HMAC-SHA256 implementation is available for kiosk PIN hashing")
+}
+
+function kioskEqual(a, b) {
+  const left = String(a || "")
+  const right = String(b || "")
+  if (typeof $security !== "undefined" && $security && typeof $security.equal === "function") {
+    return $security.equal(left, right)
+  }
+  if (left.length !== right.length) return false
+  let diff = 0
+  for (let i = 0; i < left.length; i++) diff |= left.charCodeAt(i) ^ right.charCodeAt(i)
+  return diff === 0
+}
+
+// $os.readFile hands back a string on some builds and a byte array on others.
+function kioskReadFile(path) {
+  const value = $os.readFile(path)
+  if (value === null || value === undefined) return ""
+  if (typeof value === "string") return value
+  if (typeof value.length === "number") {
+    let out = ""
+    for (let i = 0; i < value.length; i++) out += String.fromCharCode(value[i])
+    return out
+  }
+  return String(value)
+}
+
+// The pepper never travels with the hash. Preference order: env var, a generated file in the
+// data directory, then no pepper (still salted and iterated, but log it loudly).
+function kioskPepper() {
+  let fromEnv = ""
+  try { if (typeof $os !== "undefined" && $os.getenv) fromEnv = String($os.getenv("OPENROSTER_PIN_PEPPER") || "").trim() } catch (err) {}
+  if (fromEnv) return fromEnv
+  if (typeof globalThis !== "undefined" && globalThis.__kioskPepper) return globalThis.__kioskPepper
+  let path = ""
+  try { path = String($app.dataDir() || "") + "/openroster_pin_pepper" } catch (err) { path = "" }
+  if (!path) {
+    console.log("kiosk: OPENROSTER_PIN_PEPPER is not set and the data directory is unknown; PIN hashes are salted but unpeppered")
+    return ""
+  }
+  let existing = ""
+  try { existing = kioskReadFile(path).trim() } catch (err) { existing = "" }
+  if (existing) { globalThis.__kioskPepper = existing; return existing }
+  try {
+    const made = $security.randomString(48)
+    $os.writeFile(path, made, 0o600)
+    const check = kioskReadFile(path).trim()
+    if (check !== made) throw new Error("the pepper file did not keep what was written")
+    globalThis.__kioskPepper = made
+    console.log("kiosk: generated a PIN pepper at " + path + " — back it up somewhere other than the database")
+    return made
+  } catch (err) {
+    console.log("kiosk: could not write the PIN pepper to " + path + " (" + err + "); set OPENROSTER_PIN_PEPPER instead — PIN hashes are salted but unpeppered until then")
+    return ""
+  }
+}
+
+function kioskPinChain(salt, pin, rounds, pepper) {
+  let digest = salt + ":" + String(pin || "")
+  const total = Math.max(1, Math.floor(Number(rounds) || 1))
+  for (let i = 0; i < total; i++) digest = kioskDigest(digest, pepper)
+  return digest
+}
+
+function kioskPinParse(stored) {
+  const value = String(stored || "")
+  if (!value) return null
+  if (/^[0-9a-f]{64}$/.test(value)) return { algo: "legacy", rounds: 0, salt: "", digest: value }
+  const parts = value.split("$")
+  if (parts.length !== 4 || parts[0] !== KIOSK_PIN_ALGO) return null
+  const rounds = parseInt(parts[1], 10)
+  if (!rounds || rounds < 1 || !parts[2] || !parts[3]) return null
+  return { algo: parts[0], rounds: rounds, salt: parts[2], digest: parts[3] }
+}
+
+function kioskHashPin(pin, pepper) {
+  const salt = (typeof $security !== "undefined" && $security)
+    ? String($security.randomString(24))
+    : String(globalThis.__kioskSaltSeed || (globalThis.__kioskSaltSeed = Date.now())) + String(Math.random()).slice(2, 12)
+  return KIOSK_PIN_ALGO + "$" + KIOSK_PIN_ROUNDS + "$" + salt + "$" + kioskPinChain(salt, pin, KIOSK_PIN_ROUNDS, pepper)
+}
+
+// A keyed, company-wide fingerprint of the PIN used only to keep PINs unique between
+// employees. It is peppered, so it is as hard to brute force as the verifier itself.
+function kioskPinKey(pin, pepper) {
+  return kioskDigest("openroster-kiosk-pin|" + String(pin || ""), pepper).slice(0, 32)
+}
+
+function kioskPinKeyTaken(app, companyId, key, ignoreEmployeeId) {
+  if (!key || !companyId) return false
+  const filter = "company = {:company} && kiosk_pin_key = {:key}" + (ignoreEmployeeId ? " && id != {:ignore}" : "")
+  const params = { company: companyId, key: key }
+  if (ignoreEmployeeId) params.ignore = ignoreEmployeeId
+  try { return app.findRecordsByFilter("employees", filter, "", 1, 0, params).length > 0 } catch (err) { return false }
+}
+
+function kioskPinVerify(employee, pin, pepper) {
+  const parsed = kioskPinParse(employee.getString("kiosk_pin_hash"))
+  if (!parsed) return { ok: false, needsRehash: false, legacy: false }
+  const value = String(pin || "")
+  if (parsed.algo === "legacy") {
+    let legacy = ""
+    try { legacy = String($security.sha256(value)) } catch (err) { legacy = "" }
+    const ok = !!legacy && kioskEqual(legacy, parsed.digest)
+    return { ok: ok, needsRehash: ok, legacy: true }
+  }
+  const digest = kioskPinChain(parsed.salt, value, parsed.rounds, pepper)
+  const ok = kioskEqual(digest, parsed.digest)
+  return { ok: ok, needsRehash: ok && parsed.rounds < KIOSK_PIN_ROUNDS, legacy: false }
+}
+
+// Pure policy check. Returns "" when the PIN is acceptable, otherwise the reason to show.
+function kioskPinIsWeak(pin, hints) {
+  const value = String(pin || "")
+  if (!/^\d+$/.test(value) || value.length < KIOSK_PIN_MIN || value.length > KIOSK_PIN_MAX) {
+    return "Kiosk PIN must be " + KIOSK_PIN_MIN + "–" + KIOSK_PIN_MAX + " digits."
+  }
+  const digits = value.split("").map((d) => Number(d))
+  if (digits.every((d) => d === digits[0])) return "Kiosk PIN cannot be the same digit repeated."
+  let up = true, down = true
+  for (let i = 1; i < digits.length; i++) {
+    if (digits[i] - digits[i - 1] !== 1) up = false
+    if (digits[i - 1] - digits[i] !== 1) down = false
+  }
+  if (up || down) return "Kiosk PIN cannot be a run of consecutive digits."
+  for (let size = 1; size <= 2; size++) {
+    if (value.length % size !== 0) continue
+    if (value === value.slice(0, size).repeat(value.length / size)) return "Kiosk PIN cannot repeat a short pattern."
+  }
+  const h = hints || {}
+  const tails = []
+  const pushTails = (digits) => {
+    if (!digits) return
+    if (digits.length >= 6 && digits.length <= KIOSK_PIN_MAX) tails.push(digits)
+    if (digits.length >= 6) tails.push(digits.slice(-6))
+    if (digits.length >= KIOSK_PIN_MIN) tails.push(digits.slice(-KIOSK_PIN_MIN))
+    if (digits.length > KIOSK_PIN_MAX) tails.push(digits.slice(-KIOSK_PIN_MAX))
+  }
+  pushTails(String(h.phone || "").replace(/\D/g, ""))
+  pushTails(String(h.employee_number || "").replace(/\D/g, ""))
+  const onFile = String(h.hire_date || "").slice(0, 10).replace(/-/g, "")
+  if (onFile.length === 8) { tails.push(onFile.slice(4, 6) + onFile.slice(6, 8)); tails.push(onFile.slice(6, 8) + onFile.slice(4, 6)) }
+  for (let i = 0; i < tails.length; i++) if (tails[i] === value) return "Kiosk PIN cannot be the employee's own phone number or a date on file."
+  return ""
+}
+
+function kioskLockSeconds(fails) {
+  const n = Math.max(0, Math.floor(Number(fails) || 0))
+  if (n >= KIOSK_LOCK_STEPS.length) return KIOSK_LOCK_STEPS[KIOSK_LOCK_STEPS.length - 1]
+  return KIOSK_LOCK_STEPS[n]
+}
+
+function kioskLockLabel(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0))
+  if (s < 60) return s + (s === 1 ? " second" : " seconds")
+  const m = Math.round(s / 60)
+  return m + (m === 1 ? " minute" : " minutes")
+}
+
+// One hash of the client address so the attempt trail can be correlated without storing IPs.
+function kioskIpHash(e) {
+  let ip = ""
+  try { ip = e && typeof e.realIP === "function" ? String(e.realIP()) : "" } catch (err) { ip = "" }
+  if (!ip) return ""
+  try { return String($security.sha256("openroster-kiosk-ip|" + ip)).slice(0, 32) } catch (err) { return "" }
+}
+
+// PocketBase writes dates as `2026-11-22 23:05:57.907Z` (a space, not a `T`), and filters
+// compare them as strings, so every timestamp written or compared here uses that exact form.
+function kioskTimestamp(value) {
+  const date = value === undefined || value === null ? new Date() : new Date(value)
+  const iso = isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString()
+  return iso.replace("T", " ")
+}
+
+function kioskAuthEvent(app, kind, fields) {
+  try {
+    const record = new Record(app.findCollectionByNameOrId("kiosk_auth_events"))
+    record.set("kind", kind)
+    if (fields && fields.employee) record.set("employee", fields.employee)
+    if (fields && fields.device) record.set("device", fields.device)
+    if (fields && fields.ip_hash) record.set("ip_hash", fields.ip_hash)
+    if (fields && fields.note) record.set("note", fields.note)
+    record.set("at", kioskTimestamp())
+    app.save(record)
+    return record
+  } catch (err) {
+    console.log("kiosk auth event failed: " + err)
+    return null
+  }
+}
+
+function kioskFailWindow(app, filter, windowMs, limit) {
+  const clauses = ["kind = {:kind}", "at >= {:since}"]
+  const params = { kind: "fail", since: kioskTimestamp(Date.now() - windowMs) }
+  if (filter.employee) { clauses.push("employee = {:employee}"); params.employee = filter.employee }
+  if (filter.device) { clauses.push("device = {:device}"); params.device = filter.device }
+  if (filter.ip_hash) { clauses.push("ip_hash = {:ip_hash}"); params.ip_hash = filter.ip_hash }
+  let rows = []
+  try { rows = app.findRecordsByFilter("kiosk_auth_events", clauses.join(" && "), "-at", limit, 0, params) } catch (err) { rows = [] }
+  return rows
+}
+
+function kioskLastResetAt(app, filter) {
+  const clauses = ["kind = {:kind}"]
+  const params = { kind: "reset" }
+  if (filter.employee) { clauses.push("employee = {:employee}"); params.employee = filter.employee }
+  if (filter.device) { clauses.push("device = {:device}"); params.device = filter.device }
+  try {
+    const rows = app.findRecordsByFilter("kiosk_auth_events", clauses.join(" && "), "-at", 1, 0, params)
+    return rows.length ? toMs(rows[0].getString("at")) : 0
+  } catch (err) { return 0 }
+}
+
+// { fails, lockedUntil, retryAfter, attemptsLeft } — derived from the attempt trail, so a
+// manager reset (a `reset` event) clears it without touching counters and nothing goes stale.
+function kioskLockState(app, filter, limit, windowMs, lockSeconds, sinceMs) {
+  const rows = kioskFailWindow(app, filter, windowMs, limit)
+  const resetAt = Math.max(kioskLastResetAt(app, filter), Number(sinceMs) || 0)
+  const fails = rows.filter((row) => toMs(row.getString("at")) > resetAt).length
+  const newest = rows.length ? toMs(rows[0].getString("at")) : 0
+  const lockFor = fails >= limit ? (lockSeconds || kioskLockSeconds(fails)) : 0
+  const lockedUntil = lockFor ? newest + lockFor * 1000 : 0
+  const retryAfter = lockedUntil > Date.now() ? Math.ceil((lockedUntil - Date.now()) / 1000) : 0
+  return { fails: fails, lockedUntil: lockedUntil, retryAfter: retryAfter, attemptsLeft: Math.max(0, limit - fails) }
+}
+
+function kioskLocked(e, message, retryAfter) {
+  const seconds = Math.max(1, Math.round(retryAfter || 0))
+  return e.json(429, { message: message, data: { locked: true, retry_after: seconds } })
 }
 
 function shiftDate(record) {
@@ -861,7 +1116,34 @@ module.exports = {
   shiftDate: shiftDate,
   kioskTokenFromRequest: kioskTokenFromRequest,
   kioskDeviceForToken: kioskDeviceForToken,
-  kioskPinMatches: kioskPinMatches,
+  kioskPinVerify: kioskPinVerify,
+  kioskHashPin: kioskHashPin,
+  kioskPinParse: kioskPinParse,
+  kioskPinChain: kioskPinChain,
+  kioskPinIsWeak: kioskPinIsWeak,
+  kioskPinKey: kioskPinKey,
+  kioskPinKeyTaken: kioskPinKeyTaken,
+  kioskPepper: kioskPepper,
+  kioskDigest: kioskDigest,
+  kioskEqual: kioskEqual,
+  kioskLockSeconds: kioskLockSeconds,
+  kioskTimestamp: kioskTimestamp,
+  kioskReadFile: kioskReadFile,
+  kioskLockLabel: kioskLockLabel,
+  kioskLockState: kioskLockState,
+  kioskAuthEvent: kioskAuthEvent,
+  kioskIpHash: kioskIpHash,
+  kioskLocked: kioskLocked,
+  KIOSK_PIN_ROUNDS: KIOSK_PIN_ROUNDS,
+  KIOSK_PIN_MIN: KIOSK_PIN_MIN,
+  KIOSK_PIN_MAX: KIOSK_PIN_MAX,
+  KIOSK_PIN_WINDOW_MS: KIOSK_PIN_WINDOW_MS,
+  KIOSK_PAIR_WINDOW_MS: KIOSK_PAIR_WINDOW_MS,
+  KIOSK_EMPLOYEE_FAIL_LIMIT: KIOSK_EMPLOYEE_FAIL_LIMIT,
+  KIOSK_DEVICE_FAIL_LIMIT: KIOSK_DEVICE_FAIL_LIMIT,
+  KIOSK_PAIR_FAIL_LIMIT: KIOSK_PAIR_FAIL_LIMIT,
+  KIOSK_DEVICE_LOCK_SECONDS: KIOSK_DEVICE_LOCK_SECONDS,
+  KIOSK_PAIR_LOCK_SECONDS: KIOSK_PAIR_LOCK_SECONDS,
   kioskDeviceView: kioskDeviceView,
   kioskContext: kioskContext,
   certificationError: certificationError,

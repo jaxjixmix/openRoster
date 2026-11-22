@@ -1503,8 +1503,18 @@ routerAdd("POST", "/api/openroster/kiosk/devices/revoke", (e) => {
 routerAdd("POST", "/api/openroster/kiosk/pair", (e) => {
   const h = require(`${__hooks}/lib.js`)
   const body = e.requestInfo().body || {}
+  // An address we cannot read shares one budget: the cap gets stricter, never looser.
+  const ipHash = h.kioskIpHash(e) || "unknown-client"
+  const scope = { ip_hash: ipHash }
+  const lock = h.kioskLockState(e.app, scope, h.KIOSK_PAIR_FAIL_LIMIT, h.KIOSK_PAIR_WINDOW_MS, h.KIOSK_PAIR_LOCK_SECONDS)
+  if (lock.retryAfter > 0) {
+    return h.kioskLocked(e, "Too many pairing attempts. Try again in " + h.kioskLockLabel(lock.retryAfter) + ".", lock.retryAfter)
+  }
   const code = String(body.code || "").trim()
-  if (!/^\d{6}$/.test(code)) return e.json(422, { message: "Enter the 6-digit pairing code." })
+  if (!/^\d{6}$/.test(code)) {
+    h.kioskAuthEvent(e.app, "fail", { ip_hash: ipHash, note: "malformed pair code" })
+    return e.json(422, { message: "Enter the 6-digit pairing code." })
+  }
   let device = null
   try {
     device = e.app.findFirstRecordByFilter(
@@ -1512,9 +1522,13 @@ routerAdd("POST", "/api/openroster/kiosk/pair", (e) => {
       "pair_code_hash = {:hash} && active = true",
       { hash: $security.sha256(code) }
     )
-  } catch (err) { return e.json(401, { message: "That pairing code is not valid." }) }
+  } catch (err) { device = null }
   if (!device || !device.getString("pair_expires_at") || h.toMs(device.getString("pair_expires_at")) < Date.now()) {
-    return e.json(401, { message: "That pairing code has expired. Ask a manager for a new one." })
+    const expired = !!device
+    h.kioskAuthEvent(e.app, "fail", { device: device ? device.id : "", ip_hash: ipHash, note: "bad or expired pair code" })
+    const after = h.kioskLockState(e.app, scope, h.KIOSK_PAIR_FAIL_LIMIT, h.KIOSK_PAIR_WINDOW_MS, h.KIOSK_PAIR_LOCK_SECONDS)
+    if (after.retryAfter > 0) return h.kioskLocked(e, "Too many pairing attempts. Try again in " + h.kioskLockLabel(after.retryAfter) + ".", after.retryAfter)
+    return e.json(401, { message: expired ? "That pairing code has expired. Ask a manager for a new one." : "That pairing code is not valid." })
   }
   const token = $security.randomString(48)
   device.set("token_hash", $security.sha256(token))
@@ -1522,6 +1536,7 @@ routerAdd("POST", "/api/openroster/kiosk/pair", (e) => {
   device.set("pair_expires_at", "")
   device.set("last_seen", new Date().toISOString())
   e.app.save(device)
+  h.kioskAuthEvent(e.app, "reset", { ip_hash: ipHash, note: "paired" })
   let location = null
   try { location = e.app.findRecordById("locations", device.getString("location")) } catch (err) {}
   return e.json(200, { token: token, device: h.kioskDeviceView(device, location) })
@@ -1587,17 +1602,60 @@ routerAdd("POST", "/api/openroster/kiosk/punch", (e) => {
   const type = String(body.type || "")
   if (!["in", "out", "break_start", "break_end"].includes(type)) return h.bad(e, "Unknown punch type.")
   if (!employeeId) return h.bad(e, "Employee is required.")
+
+  // A tablet that is failing across employees is not a fat-finger: lock the device first.
+  const deviceScope = { device: device.id }
+  const deviceLock = h.kioskLockState(e.app, deviceScope, h.KIOSK_DEVICE_FAIL_LIMIT, h.KIOSK_PIN_WINDOW_MS, h.KIOSK_DEVICE_LOCK_SECONDS)
+  if (deviceLock.retryAfter > 0) {
+    return h.kioskLocked(e, "This tablet is locked after too many wrong PINs. A manager can unlock it in Settings.", deviceLock.retryAfter)
+  }
+
   let employee = null
   try { employee = e.app.findRecordById("employees", employeeId) } catch (err) { return h.bad(e, "Unknown employee.", 404) }
   if (employee.getString("company") !== company.id || employee.getString("location") !== location.id || employee.getString("status") !== "active") {
     return h.bad(e, "This employee is not assigned to this kiosk's location.", 403)
   }
+
   const clientId = String(body.client_id || "").slice(0, 64)
   const offline = body.offline === true && !!clientId && !!body.punched_at
-  if (!offline) {
-    if (!employee.getString("kiosk_pin_hash")) return h.bad(e, "Ask a manager to set a kiosk PIN for this employee.", 422)
-    if (!h.kioskPinMatches(employee, body.pin)) return h.bad(e, "Incorrect PIN.", 401)
+  const pin = String(body.pin || "")
+  // Every punch carries a PIN, offline included: the queue is verified here, on sync.
+  if (!employee.getString("kiosk_pin_hash")) return h.bad(e, "Ask a manager to set a kiosk PIN for this employee.", 422)
+  if (!pin) return h.bad(e, offline ? "This queued punch has no PIN, so it cannot be verified. Ask a manager to help." : "Enter your PIN.", 422)
+
+  const recent = e.app.findRecordsByFilter("punches", "employee = {:employee}", "-punched_at", 1, 0, { employee: employee.id })
+  const lastPunchMs = recent.length ? h.toMs(recent[0].getString("punched_at")) : 0
+  const employeeScope = { employee: employee.id }
+  const employeeLock = h.kioskLockState(e.app, employeeScope, h.KIOSK_EMPLOYEE_FAIL_LIMIT, h.KIOSK_PIN_WINDOW_MS, 0, lastPunchMs)
+  if (employeeLock.retryAfter > 0) {
+    return h.kioskLocked(e, "Too many wrong PINs. Try again in " + h.kioskLockLabel(employeeLock.retryAfter) + ".", employeeLock.retryAfter)
   }
+
+  const pepper = h.kioskPepper()
+  const verdict = h.kioskPinVerify(employee, pin, pepper)
+  if (!verdict.ok) {
+    h.kioskAuthEvent(e.app, "fail", { employee: employee.id, device: device.id, ip_hash: h.kioskIpHash(e) })
+    const after = h.kioskLockState(e.app, employeeScope, h.KIOSK_EMPLOYEE_FAIL_LIMIT, h.KIOSK_PIN_WINDOW_MS, 0, lastPunchMs)
+    const deviceAfter = h.kioskLockState(e.app, deviceScope, h.KIOSK_DEVICE_FAIL_LIMIT, h.KIOSK_PIN_WINDOW_MS, h.KIOSK_DEVICE_LOCK_SECONDS)
+    const front = employee.getString("first_name") + " " + employee.getString("last_name") + " at " + location.getString("name")
+    if (after.retryAfter > 0 || deviceAfter.retryAfter > 0) {
+      h.notifyManagersOnce(e.app, "system", "Kiosk PIN locked out", "Repeated wrong PINs for " + front + ". The kiosk is paused until the lockout expires or a manager unlocks it in Settings.", "/settings")
+      return h.kioskLocked(e, "Too many wrong PINs. Try again in " + h.kioskLockLabel(Math.max(after.retryAfter, deviceAfter.retryAfter)) + ", or ask a manager to unlock this kiosk.", Math.max(after.retryAfter, deviceAfter.retryAfter))
+    }
+    if (after.attemptsLeft <= 1) {
+      h.notifyManagersOnce(e.app, "system", "Kiosk PIN warning", "Someone keeps entering the wrong kiosk PIN for " + front + ".", "/settings")
+    }
+    return e.json(401, { message: "Incorrect PIN.", data: { attempts_left: after.attemptsLeft, retry_after: 0 } })
+  }
+  if (verdict.needsRehash) {
+    // Legacy sha256 rows (and shorter chains) are upgraded the moment the right PIN is typed.
+    const key = h.kioskPinKey(pin, pepper)
+    employee.set("kiosk_pin_hash", h.kioskHashPin(pin, pepper))
+    employee.set("kiosk_pin_set_at", new Date().toISOString())
+    if (!h.kioskPinKeyTaken(e.app, company.id, key, employee.id)) employee.set("kiosk_pin_key", key)
+    e.app.save(employee)
+  }
+
   if (clientId) {
     const existing = e.app.findRecordsByFilter("punches", "client_id = {:clientId}", "", 1, 0, { clientId: clientId })
     if (existing.length) return e.json(200, { punch: existing[0], duplicate: true })
@@ -1607,12 +1665,11 @@ routerAdd("POST", "/api/openroster/kiosk/punch", (e) => {
     if (!clientId) return h.bad(e, "A client timestamp requires a client_id.", 422)
     const parsed = Date.parse(body.punched_at)
     const now = Date.now()
-    if (isNaN(parsed) || parsed > now + 120000 || parsed < now - 72 * 3600 * 1000) return h.bad(e, "Offline punch time is out of range.", 422)
+    if (isNaN(parsed) || parsed > now + 120000 || parsed < now - 12 * 3600 * 1000) return h.bad(e, "Offline punch time is out of range.", 422)
     punchedAt = new Date(parsed)
   }
 
-  const latest = e.app.findRecordsByFilter("punches", "employee = {:employee}", "-punched_at", 1, 0, { employee: employee.id })
-  const lastType = latest.length ? latest[0].getString("type") : ""
+  const lastType = recent.length ? recent[0].getString("type") : ""
   if (type === "in" && (lastType === "in" || lastType === "break_start")) return h.bad(e, "This employee is already clocked in.", 409)
   if (type === "out" && (!lastType || lastType === "out")) return h.bad(e, "No open clock-in to close.", 409)
   if (type === "out" && lastType === "break_start") return h.bad(e, "End the break first.", 409)
@@ -1628,13 +1685,12 @@ routerAdd("POST", "/api/openroster/kiosk/punch", (e) => {
   punch.set("kiosk_device", device.id)
   if (clientId) punch.set("client_id", clientId)
   if (clientId && body.punched_at) {
-    punch.set("note", offline
-      ? "Kiosk offline punch; timestamp supplied by the device. PIN not verified."
-      : "Kiosk offline punch; timestamp supplied by the device.")
+    punch.set("note", "Kiosk offline punch; timestamp supplied by the device, PIN verified on sync.")
   }
   e.app.save(punch)
   return e.json(200, { punch: punch, device: h.kioskDeviceView(device, location) })
 })
+
 
 routerAdd("POST", "/api/openroster/kiosk/employee-pin", (e) => {
   const h = require(`${__hooks}/lib.js`)
@@ -1646,11 +1702,57 @@ routerAdd("POST", "/api/openroster/kiosk/employee-pin", (e) => {
   try { employee = e.app.findRecordById("employees", body.employee) } catch (err) { return h.bad(e, "Unknown employee.", 404) }
   if (!company || employee.getString("company") !== company.id) return h.bad(e, "Unknown employee.", 404)
   const pin = String(body.pin || "").trim()
-  if (pin && !/^\d{4,8}$/.test(pin)) return h.bad(e, "Kiosk PIN must be 4–8 digits.")
-  employee.set("kiosk_pin_hash", pin ? $security.sha256(pin) : "")
+  if (pin) {
+    const weak = h.kioskPinIsWeak(pin, {
+      phone: employee.getString("phone"),
+      employee_number: employee.getString("employee_number"),
+      hire_date: employee.getString("hire_date"),
+    })
+    if (weak) return h.bad(e, weak, 422)
+    const pepper = h.kioskPepper()
+    const key = h.kioskPinKey(pin, pepper)
+    if (h.kioskPinKeyTaken(e.app, company.id, key, employee.id)) {
+      return h.bad(e, "Another employee already uses that kiosk PIN. Choose a different one.", 422)
+    }
+    employee.set("kiosk_pin_hash", h.kioskHashPin(pin, pepper))
+    employee.set("kiosk_pin_key", key)
+    employee.set("kiosk_pin_set_at", new Date().toISOString())
+  } else {
+    employee.set("kiosk_pin_hash", "")
+    employee.set("kiosk_pin_key", "")
+    employee.set("kiosk_pin_set_at", "")
+  }
   e.app.save(employee)
+  // A manager setting a PIN is standing at the machine: clear the employee's lockout too.
+  h.kioskAuthEvent(e.app, "reset", { employee: employee.id, note: "PIN changed by manager" })
   h.audit(e.app, e.auth, "employees", employee.id, "update", pin ? "Set kiosk PIN" : "Cleared kiosk PIN")
   return e.json(200, { ok: true })
+}, $apis.requireAuth())
+
+// A manager clears a lockout (employee or device) by starting a fresh attempt window.
+routerAdd("POST", "/api/openroster/kiosk/reset-lock", (e) => {
+  const h = require(`${__hooks}/lib.js`)
+  if (!h.isManager(e.auth)) return h.bad(e, "Manager access required.", 403)
+  const body = e.requestInfo().body || {}
+  const company = h.companyOf(e.app, e.auth)
+  if (!company) return h.bad(e, "Company not found.", 404)
+  const fields = {}
+  if (body.employee) {
+    let employee = null
+    try { employee = e.app.findRecordById("employees", body.employee) } catch (err) { return h.bad(e, "Unknown employee.", 404) }
+    if (employee.getString("company") !== company.id) return h.bad(e, "Unknown employee.", 404)
+    fields.employee = employee.id
+  }
+  if (body.device) {
+    let device = null
+    try { device = e.app.findRecordById("kiosk_devices", body.device) } catch (err) { return h.bad(e, "Unknown tablet.", 404) }
+    if (device.getString("company") !== company.id) return h.bad(e, "Unknown tablet.", 404)
+    fields.device = device.id
+  }
+  if (body.ip_hash) fields.ip_hash = String(body.ip_hash)
+  if (!fields.employee && !fields.device && !fields.ip_hash) return h.bad(e, "Name the employee or the tablet to unlock.", 422)
+  h.kioskAuthEvent(e.app, "reset", fields)
+  return e.json(200, { ok: true, scope: fields.employee ? "employee" : fields.device ? "device" : "address" })
 }, $apis.requireAuth())
 
 // ------------------------------------------------------------------ validation

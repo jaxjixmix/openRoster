@@ -31,6 +31,7 @@ import {
   getPayRules,
   getPositions,
   saveKioskPin,
+  unlockKioskLock,
 } from "@/lib/data";
 import type { Certification, Department, Holiday, KioskDevice, Location, PayRule, Position, User } from "@/lib/types";
 import { formatDate, toDate } from "@/lib/dates";
@@ -98,6 +99,7 @@ export default function SettingsPage() {
   const [kioskDeviceLocation, setKioskDeviceLocation] = useState("");
   const [kioskPairing, setKioskPairing] = useState<{ code: string; expires_at: string; name: string } | null>(null);
   const [kioskPairBusy, setKioskPairBusy] = useState(false);
+  const [kioskUnlockBusy, setKioskUnlockBusy] = useState("");
 
   const [locationModal, setLocationModal] = useState<Location | "new" | null>(null);
   const [departmentModal, setDepartmentModal] = useState<Department | "new" | null>(null);
@@ -212,6 +214,18 @@ export default function SettingsPage() {
       toast(errorMessage(err), "error");
     } finally {
       setKioskPairBusy(false);
+    }
+  }
+
+  async function unlockDevice(device: KioskDevice) {
+    setKioskUnlockBusy(device.id);
+    try {
+      await unlockKioskLock({ device: device.id });
+      toast(`${device.name} unlocked. It accepts PINs again.`, "info");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    } finally {
+      setKioskUnlockBusy("");
     }
   }
 
@@ -397,7 +411,7 @@ export default function SettingsPage() {
                 <p className="text-sm font-semibold">Kiosk mode</p>
               </div>
               <p className="text-xs text-muted">
-                A PIN unlocks the shared time-clock tablet. It is a UI lock, not a security boundary; use a locked-down device and HTTPS.
+                A PIN unlocks the shared time-clock tablet. It is a UI lock, not a security boundary; use a locked-down device and HTTPS. Employee kiosk PINs are salted, peppered and kept out of the database; three wrong tries pause the tablet and a manager unlocks it here.
               </p>
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="w-full max-w-xs">
@@ -446,7 +460,10 @@ export default function SettingsPage() {
                           {device.location_name || "Location"} · {device.last_seen ? `last seen ${new Date(device.last_seen).toLocaleString(company.locale || "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "never paired"}
                         </p>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => void revokeDevice(device)}>Revoke</Button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button variant="outline" size="sm" onClick={() => void unlockDevice(device)} loading={kioskUnlockBusy === device.id}>Unlock</Button>
+                        <Button variant="ghost" size="sm" onClick={() => void revokeDevice(device)}>Revoke</Button>
+                      </div>
                     </div>
                   ))}
                   {kioskDevices.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted">No tablets paired yet.</p>}

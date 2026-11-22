@@ -282,6 +282,11 @@ export async function getForecast(weekStart: string, location?: string): Promise
   return rows[0] || null;
 }
 
+// Clears a kiosk PIN lockout (an employee, one tablet, or one address). Managers only.
+export async function unlockKioskLock(input: { employee?: string; device?: string }): Promise<void> {
+  await pb.send("/api/openroster/kiosk/reset-lock", { method: "POST", body: input });
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
